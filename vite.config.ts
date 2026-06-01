@@ -7,9 +7,13 @@ export default defineConfig({
   plugins: [
     react(),
     tailwindcss(),
-    VitePWA({
-      registerType: 'autoUpdate',
-      manifest: {
+   VitePWA({
+  registerType: 'autoUpdate',
+  srcDir: 'public',
+  filename: 'sw.js',
+  strategies: 'injectManifest',
+  manifest: {
+  
         name: 'Oh!G IMS',
         short_name: 'OhG IMS',
         theme_color: '#E8400C',
