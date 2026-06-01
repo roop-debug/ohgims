@@ -1,3 +1,9 @@
+import AppLayout from '../../components/shared/AppLayout'
+
 export default function AdminDashboard() {
-  return <div>Admin Dashboard</div>
+  return (
+    <AppLayout>
+      <div>Admin Dashboard</div>
+    </AppLayout>
+  )
 }
