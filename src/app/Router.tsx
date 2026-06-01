@@ -2,7 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import ProtectedRoute from '../components/shared/ProtectedRoute'
 
-// Pages (we'll create these next)
+
 import Login from './login'
 import AdminDashboard from './admin/Dashboard'
 import DistributorDashboard from './distributor/Dashboard'
