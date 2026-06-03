@@ -7,7 +7,7 @@ interface ProtectedRouteProps {
 }
 
 export default function ProtectedRoute({ children, requiredRole }: ProtectedRouteProps) {
-  /*const { session, role, loading } = useAuth()
+ /* const { session, role, loading } = useAuth()
 
   if (loading) {
     return <div className="flex items-center justify-center h-screen">Loading...</div>

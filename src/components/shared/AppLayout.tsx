@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import Sidebar from './Sidebar'
+import NotificationBell from './NotificationBell'
 
 interface AppLayoutProps {
   children: React.ReactNode
@@ -34,17 +35,23 @@ export default function AppLayout({ children }: AppLayoutProps) {
       {/* Main content */}
       <div className="flex-1 flex flex-col overflow-hidden">
 
-        {/* Mobile top bar */}
-        <div className="md:hidden flex items-center gap-3 px-4 py-3 bg-white border-b border-gray-200">
-          <button
+        {/* Top bar — mobile and desktop */}
+        <div className="flex items-center justify-between px-4 py-3 bg-white border-b border-gray-200">
+          {/* Left — hamburger on mobile */}
+          <div className="flex items-center gap-3">
+           <button
             onClick={() => setDrawerOpen(true)}
-            className="text-gray-600 text-xl"
-          >
-            ☰
-          </button>
-          <span className="text-lg font-black text-[#E8400C]">Oh!G</span>
-        </div>
+            className="md:hidden text-gray-600 text-xl"
+           >
+               ☰
+           </button>
+           <span className="md:hidden text-lg font-black text-[#E8400C]">Oh!G</span>
+          </div>
 
+          {/* Right — notification bell */}
+          <NotificationBell />
+         </div>
+        
         {/* Page content */}
         <main className="flex-1 overflow-y-auto p-6">
           {children}
