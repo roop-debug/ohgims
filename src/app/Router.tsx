@@ -6,7 +6,8 @@ import AdminDashboard from './admin/Dashboard'
 import AdminInventory from './admin/Inventory'
 import AdminDistributors from './admin/Distributors'
 import AdminDispatch from './admin/Dispatch'
-import AdminClaims from './admin/claims'
+import AdminClaims from './admin/Claims'
+import AdminOrders from './admin/Orders'
 import DistributorDashboard from './distributor/Dashboard'
 
 function RootRedirect() {
@@ -23,10 +24,7 @@ export default function Router() {
   return (
     <BrowserRouter>
       <Routes>
-        {/* Root → redirect based on role */}
         <Route path="/" element={<RootRedirect />} />
-
-        {/* Login */}
         <Route path="/login" element={<Login />} />
 
         {/* Admin routes */}
@@ -55,6 +53,11 @@ export default function Router() {
             <AdminClaims />
           </ProtectedRoute>
         } />
+        <Route path="/admin/orders" element={
+          <ProtectedRoute requiredRole="admin">
+            <AdminOrders />
+          </ProtectedRoute>
+        } />
 
         {/* Distributor routes */}
         <Route path="/distributor/*" element={
@@ -66,4 +69,3 @@ export default function Router() {
     </BrowserRouter>
   )
 }
-  

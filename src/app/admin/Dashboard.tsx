@@ -1,5 +1,5 @@
 import AppLayout from '../../components/shared/AppLayout'
-import KPICard from '../../components/shared/KpiCard'
+import KPICard from '../../components/shared/KPICard'
 import DataTable from '../../components/shared/DataTable'
 import type { ColumnDef } from '@tanstack/react-table'
 

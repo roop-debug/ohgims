@@ -63,12 +63,23 @@ export default function Login() {
 
           {/* Submit button */}
           <button
-            onClick={handleSubmit}
-            disabled={loading}
-            className="w-full bg-[#E8400C] text-white py-2 rounded-lg text-sm font-medium hover:bg-[#c93509] transition-colors disabled:opacity-50"
-          >
-            {loading ? 'Signing in...' : 'Sign in'}
-          </button>
+  type="button"
+  onClick={async () => {
+  setLoading(true)
+  setError(null)
+  const { error } = await supabase.auth.signInWithPassword({ email, password })
+  if (error) {
+    setError(error.message)
+    setLoading(false)
+  } else {
+    window.location.href = '/admin'
+  }
+}}
+  disabled={loading}
+  className="w-full bg-[#E8400C] text-white py-2 rounded-lg text-sm font-medium hover:bg-[#c93509] transition-colors disabled:opacity-50"
+>
+  {loading ? 'Signing in...' : 'Sign in'}
+</button>
         </div>
 
       </div>

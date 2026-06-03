@@ -2,7 +2,7 @@ import { useState } from 'react'
 import AppLayout from '../../components/shared/AppLayout'
 import DataTable from '../../components/shared/DataTable'
 import Modal from '../../components/shared/Modal'
-import KPICard from '../../components/shared/KpiCard'
+import KPICard from '../../components/shared/KPICard'
 import type { ColumnDef } from '@tanstack/react-table'
 
 interface DistributorRow {
