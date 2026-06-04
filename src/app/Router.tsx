@@ -1,4 +1,4 @@
-import { HashRouter, Routes, Route, Navigate, BrowserRouter } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import ProtectedRoute from '../components/shared/ProtectedRoute'
 import Login from './login'
@@ -22,7 +22,7 @@ function RootRedirect() {
 
 export default function Router() {
   return (
-    <BrowserRouter basename="/">
+    <BrowserRouter basename='/'>
       <Routes>
         <Route path="/" element={<RootRedirect />} />
         <Route path="/login" element={<Login />} />
