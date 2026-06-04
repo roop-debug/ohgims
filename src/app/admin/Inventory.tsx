@@ -4,6 +4,8 @@ import DataTable from '../../components/shared/DataTable'
 import Modal from '../../components/shared/Modal'
 import StatusBadge from '../../components/shared/StatusBadge'
 import type { ColumnDef } from '@tanstack/react-table'
+import { useEffect } from 'react'
+import { supabase } from '../../lib/supabase'
 
 interface InventoryRow {
   id: string
@@ -15,23 +17,163 @@ interface InventoryRow {
   total_stock: number
 }
 
-// Temporary empty data — replace with Supabase fetch after DB setup
-const data: InventoryRow[] = []
 
 export default function AdminInventory() {
   const [addModalOpen, setAddModalOpen] = useState(false)
   const [manageModalOpen, setManageModalOpen] = useState(false)
   const [selectedItem, setSelectedItem] = useState<InventoryRow | null>(null)
 
+  const [data, setData] = useState<InventoryRow[]>([])
+  const [loading, setLoading] = useState(true)
+
+  // --- MOVED fetchInventory outside useEffect so it can be called from handleAddItem too ---
+ async function fetchInventory() {
+  const { data, error } = await supabase
+    .from('master_inventory')
+    .select(`
+      inventory_id,
+      sku_id,
+      stock_in,
+      stock_out,
+      total_stock,
+      status,
+      skus (name)
+    `)
+    .order('date', { ascending: false })
+
+  if (!error && data) {
+    const grouped: Record<string, any> = {}
+    data.forEach((row: any) => {
+      if (!grouped[row.sku_id]) {
+        grouped[row.sku_id] = {
+          id: row.inventory_id,
+          sku: row.sku_id,
+          name: row.skus?.name,
+          status: row.status,
+          stock_in: 0,
+          stock_out: 0,
+          total_stock: row.total_stock,
+        }
+      }
+      grouped[row.sku_id].stock_in += row.stock_in
+      grouped[row.sku_id].stock_out += row.stock_out
+    })
+    setData(Object.values(grouped))
+  }
+  setLoading(false)
+}
+  // --- END CHANGE ---
+
+  useEffect(() => {
+    fetchInventory()
+  }, [])
+
   // Add Item form state
   const [newSKU, setNewSKU] = useState('')
   const [newName, setNewName] = useState('')
   const [newUnit, setNewUnit] = useState('')
   const [newRate, setNewRate] = useState('')
-  const [newThreshold, setNewThreshold] = useState('')
+  const [newStock, setNewStock] = useState('')
 
   // Manage Stock state
   const [stockValue, setStockValue] = useState(0)
+
+  // --- UPDATED handleAddItem ---
+async function handleAddItem() {
+  if (!newSKU || !newName || !newRate) return
+
+  // 1. Insert into skus (no stock field anymore)
+  const { error: skuError } = await supabase
+    .from('skus')
+    .insert({
+      sku_id: newSKU,
+      name: newName,
+      price: parseFloat(newRate),
+      gst_rate: 0,
+      status: 'Active',
+    })
+
+  if (skuError) { console.error(skuError); return }
+
+  // 2. Create initial master_inventory row with 0 stock
+  const { error: invError } = await supabase
+    .from('master_inventory')
+    .insert({
+      sku_id: newSKU,
+      date: new Date().toISOString().split('T')[0],
+      stock_in: 0,
+      stock_out: 0,
+      total_stock: 0,
+      status: 'Out of Stock',
+    })
+    // --- ADDED in handleAddItem after SKU insert - create distributor_inventory for all existing distributors ---
+const { data: dists, error: distError } = await supabase
+  .from('distributors')
+  .select('distributor_id')
+
+if (distError) { console.error(distError); return }
+
+if (dists && dists.length > 0) {
+  const distInvRows = dists.map((d: any) => ({
+    distributor_id: d.distributor_id,
+    sku_id: newSKU,
+    date: new Date().toISOString().split('T')[0],
+    stock_in: 0,
+    stock_out: 0,
+    total_stock: 0,
+    status: 'Out of Stock',
+  }))
+
+  const { error: invError } = await supabase
+    .from('distributor_inventory')
+    .insert(distInvRows)
+
+  if (invError) { console.error(invError); return }
+}
+// --- END ---
+
+  if (invError) { console.error(invError); return }
+
+  setNewSKU('')
+  setNewName('')
+  setNewUnit('')
+  setNewRate('')
+  setAddModalOpen(false)
+  fetchInventory()
+}
+
+// --- END ---
+
+// --- UPDATED handleSaveStock ---
+async function handleSaveStock() {
+  if (!selectedItem) return
+
+  const diff = stockValue - selectedItem.total_stock
+  if (diff === 0) { setManageModalOpen(false); return }
+
+  const newTotal = stockValue
+  const newStatus = newTotal <= 0 ? 'Out of Stock' : newTotal <= 10 ? 'Low Stock' : 'In Stock'
+
+  // Insert a new master_inventory log row reflecting the adjustment
+  const { error } = await supabase
+    .from('master_inventory')
+    .insert({
+      sku_id: selectedItem.sku,
+      date: new Date().toISOString().split('T')[0],
+      stock_in: diff > 0 ? diff : 0,       // increased = stock in
+      stock_out: diff < 0 ? Math.abs(diff) : 0,  // decreased = stock out
+      total_stock: newTotal,
+      status: newStatus,
+    })
+
+  if (error) { console.error(error); return }
+
+  setManageModalOpen(false)
+  setSelectedItem(null)
+  fetchInventory()
+}
+// --- END ---
+  // --- END CHANGE ---
 
   function handleManageStock(row: InventoryRow) {
     setSelectedItem(row)
@@ -144,21 +286,25 @@ export default function AdminInventory() {
               className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#E8400C]"
             />
           </div>
+
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Low Stock Threshold</label>
-            <input
-              type="number"
-              value={newThreshold}
-              onChange={(e) => setNewThreshold(e.target.value)}
-              placeholder="e.g. 10"
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#E8400C]"
-            />
-          </div>
+  <label className="block text-sm font-medium text-gray-700 mb-1">Initial Stock</label>
+  <input
+    type="number"
+    value={newStock}
+    onChange={(e) => setNewStock(e.target.value)}
+    placeholder="e.g. 100"
+    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#E8400C]"
+  />
+</div>
+          {/* --- ADDED onClick to Add Item button --- */}
           <button
+            onClick={handleAddItem}
             className="w-full bg-[#E8400C] text-white py-2 rounded-lg text-sm font-medium hover:bg-[#c93509] transition-colors mt-2"
           >
             Add Item
           </button>
+          {/* --- END CHANGE --- */}
         </div>
       </Modal>
 
@@ -195,10 +341,11 @@ export default function AdminInventory() {
             </div>
           </div>
           <button
-            className="w-full bg-[#E8400C] text-white py-2 rounded-lg text-sm font-medium hover:bg-[#c93509] transition-colors"
-          >
-            Save Changes
-          </button>
+  onClick={handleSaveStock}
+  className="w-full bg-[#E8400C] text-white py-2 rounded-lg text-sm font-medium hover:bg-[#c93509] transition-colors"
+>
+  Save Changes
+</button>
         </div>
       </Modal>
 
