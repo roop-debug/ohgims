@@ -22,7 +22,7 @@ function RootRedirect() {
 
 export default function Router() {
   return (
-    <BrowserRouter>
+    <BrowserRouter basename='/ohgims'>
       <Routes>
         <Route path="/" element={<RootRedirect />} />
         <Route path="/login" element={<Login />} />
