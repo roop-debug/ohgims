@@ -240,6 +240,7 @@ export default function AdminDispatch() {
         <DataTable
           columns={columns}
           data={data}
+          loading={loading}
           searchable
           exportable
           exportFilename="dispatches"

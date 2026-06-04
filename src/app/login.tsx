@@ -7,7 +7,7 @@ export default function Login() {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
 
-  async function handleSubmit(e: React.FormEvent) {
+ /* async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setLoading(true)
     setError(null)
@@ -21,7 +21,7 @@ export default function Login() {
     // if success, AuthContext detects the session change
     // and RootRedirect automatically sends them to their dashboard
   }
-
+*/
   return (
     <div className="min-h-screen w-full flex items-center justify-center bg-gray-100">
       <div className="bg-white p-8 rounded-xl shadow-sm w-full max-w-sm">

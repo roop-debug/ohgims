@@ -233,6 +233,7 @@ async function handleSaveStock() {
         <DataTable
           columns={columns}
           data={data}
+          loading={loading}
           searchable
           exportable
           exportFilename="inventory"
