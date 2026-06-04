@@ -1,17 +1,19 @@
+import { precacheAndRoute } from 'workbox-precaching'
+
+precacheAndRoute(self.__WB_MANIFEST)
+
 self.addEventListener('push', function(event) {
   if (!event.data) return;
 
   const data = event.data.json();
 
-  const options = {
-    body: data.body,
-    icon: '/icons/icon-192x192.svg',
-    badge: '/icons/icon-192x192.svg',
-    data: { url: data.url || '/' },
-  };
-
   event.waitUntil(
-    self.registration.showNotification(data.title, options)
+    self.registration.showNotification(data.title, {
+      body: data.body,
+      icon: '/icons/icon-192x192.svg',
+      badge: '/icons/icon-192x192.svg',
+      data: { url: data.url || '/' }
+    })
   );
 });
 
