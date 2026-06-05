@@ -101,57 +101,72 @@ export default function DistributorSales() {
 
   // --- ADDED handleSubmit with Supabase insert ---
   async function handleSubmit() {
-    setError(null)
-    if (!form.sku_id || !form.units_sold || !form.selling_price) {
-      setError('Please fill all required fields')
-      return
-    }
-    setSubmitting(true)
-
-    const unitsSold = parseInt(form.units_sold)
-    const sellingPrice = parseFloat(form.selling_price)
-    const totalRevenue = parseFloat(form.total_revenue)
-
-    // 1. Insert sales log
-    const { error: salesError } = await supabase
-      .from('sales_logs')
-      .insert({
-        distributor_id: profile?.distributor_id,
-        sku_id: form.sku_id,
-        date: new Date().toISOString().split('T')[0],
-        units_sold: unitsSold,
-        selling_price: sellingPrice,
-        total_revenue: totalRevenue,
-      })
-
-    if (salesError) { setError(salesError.message); setSubmitting(false); return }
-
-    // 2. Update distributor inventory — decrease stock
-    const { data: currentInv } = await supabase
-      .from('distributor_inventory')
-      .select('dist_inventory_id, stock_out, total_stock')
-      .eq('distributor_id', profile?.distributor_id)
-      .eq('sku_id', form.sku_id)
-      .single()
-
-    if (currentInv) {
-      const newTotal = currentInv.total_stock - unitsSold
-      await supabase
-        .from('distributor_inventory')
-        .update({
-          stock_out: currentInv.stock_out + unitsSold,
-          total_stock: newTotal,
-          status: newTotal <= 0 ? 'Out of Stock' : newTotal <= 10 ? 'Low Stock' : 'In Stock',
-          date: new Date().toISOString().split('T')[0],
-        })
-        .eq('dist_inventory_id', currentInv.dist_inventory_id)
-    }
-
-    setSubmitting(false)
-    handleClose()
-    fetchSales()
-    fetchSKUs()
+  setError(null)
+  if (!form.sku_id || !form.units_sold || !form.selling_price) {
+    setError('Please fill all required fields')
+    return
   }
+
+  // --- ADDED stock validation ---
+  const unitsSold = parseInt(form.units_sold)
+  const { data: invData } = await supabase
+    .from('distributor_inventory')
+    .select('total_stock')
+    .eq('distributor_id', profile?.distributor_id)
+    .eq('sku_id', form.sku_id)
+    .single()
+
+  if (!invData || unitsSold > invData.total_stock) {
+    setError(`Only ${invData?.total_stock ?? 0} units available in stock`)
+    return
+  }
+  // --- END ---
+
+  setSubmitting(true)
+
+  const sellingPrice = parseFloat(form.selling_price)
+  const totalRevenue = parseFloat(form.total_revenue)
+
+  // 1. Insert sales log
+  const { error: salesError } = await supabase
+    .from('sales_logs')
+    .insert({
+      distributor_id: profile?.distributor_id,
+      sku_id: form.sku_id,
+      date: new Date().toISOString().split('T')[0],
+      units_sold: unitsSold,
+      selling_price: sellingPrice,
+      total_revenue: totalRevenue,
+    })
+
+  if (salesError) { setError(salesError.message); setSubmitting(false); return }
+
+  // 2. Update distributor inventory — decrease stock
+  const { data: currentInv } = await supabase
+    .from('distributor_inventory')
+    .select('dist_inventory_id, stock_out, total_stock')
+    .eq('distributor_id', profile?.distributor_id)
+    .eq('sku_id', form.sku_id)
+    .single()
+
+  if (currentInv) {
+    const newTotal = currentInv.total_stock - unitsSold
+    await supabase
+      .from('distributor_inventory')
+      .update({
+        stock_out: currentInv.stock_out + unitsSold,
+        total_stock: newTotal,
+        status: newTotal <= 0 ? 'Out of Stock' : newTotal <= 10 ? 'Low Stock' : 'In Stock',
+        date: new Date().toISOString().split('T')[0],
+      })
+      .eq('dist_inventory_id', currentInv.dist_inventory_id)
+  }
+
+  setSubmitting(false)
+  handleClose()
+  fetchSales()
+  fetchSKUs()
+}
   // --- END ---
 
   const columns: ColumnDef<SalesRow>[] = [

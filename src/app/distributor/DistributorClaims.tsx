@@ -81,16 +81,23 @@ export default function DistributorClaims() {
   // --- END ---
 
   function handleChange(key: keyof typeof initialForm, value: string) {
-    const updated = { ...form, [key]: value }
-    if (key === 'rate' || key === 'selling_rate' || key === 'units') {
-      const rate = parseFloat(key === 'rate' ? value : form.rate) || 0
-      const sellingRate = parseFloat(key === 'selling_rate' ? value : form.selling_rate) || 0
-      const units = parseInt(key === 'units' ? value : form.units) || 0
+  setForm(prev => {
+    const updated = { ...prev, [key]: value }
+
+    // --- FIXED auto-calc reimbursement ---
+    const rate = parseFloat(key === 'rate' ? value : updated.rate) || 0
+    const sellingRate = parseFloat(key === 'selling_rate' ? value : updated.selling_rate) || 0
+    const units = parseInt(key === 'units' ? value : updated.units) || 0
+
+    if (rate > 0 || sellingRate > 0 || units > 0) {
       const reimbursement = (rate - sellingRate) * units
       updated.reimbursement_amt = reimbursement > 0 ? reimbursement.toFixed(2) : '0'
     }
-    setForm(updated)
-  }
+    // --- END ---
+
+    return updated
+  })
+}
 
   function handleRowClick(row: ClaimRow) {
     setSelectedClaim(row)
@@ -106,12 +113,18 @@ export default function DistributorClaims() {
 
   // --- ADDED handleSubmit with Supabase insert + storage upload ---
   async function handleSubmit() {
-    setError(null)
-    if (!form.sku_id || !form.selling_rate || !form.units || !form.claim_type) {
-      setError('Please fill all required fields')
-      return
-    }
-    setSubmitting(true)
+  setError(null)
+  if (!form.sku_id || !form.selling_rate || !form.units || !form.claim_type) {
+    setError('Please fill all required fields')
+    return
+  }
+  // --- ADDED invoice check ---
+  if (!invoiceFile) {
+    setError('Please upload an invoice')
+    return
+  }
+  // --- END ---
+  setSubmitting(true)
 
     // 1. Upload invoice if provided
     let invoiceUrl = ''
