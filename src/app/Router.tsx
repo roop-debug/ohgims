@@ -8,6 +8,7 @@ import AdminDashboard from './admin/Dashboard'
 import AdminInventory from './admin/Inventory'
 import AdminDistributors from './admin/Distributors'
 import AdminDispatch from './admin/Dispatch'
+import AdminOrders from './admin/Orders'
 import AdminClaims from './admin/Claims'
 import DistributorDashboard from './distributor/Dashboard'
 import DistributorInventory from './distributor/Inventory'
@@ -58,6 +59,11 @@ export default function Router() {
           <ProtectedRoute requiredRole="admin">
             <AdminDispatch />
           </ProtectedRoute>
+        } />
+        <Route path="/admin/orders" element={
+           <ProtectedRoute requiredRole="admin">
+           <AdminOrders />
+           </ProtectedRoute>
         } />
         <Route path="/admin/claims" element={
           <ProtectedRoute requiredRole="admin">
