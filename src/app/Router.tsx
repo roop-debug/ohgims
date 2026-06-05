@@ -13,7 +13,7 @@ import DistributorDashboard from './distributor/Dashboard'
 import DistributorInventory from './distributor/Inventory'
 import DistributorOrders from './distributor/Orders'
 import DistributorOrderDetails from './distributor/OrderDetails'
-import DistributorCreateOrder from './distributor/CreateOrder'
+import CreateOrder from './distributor/CreateOrder'
 import DistributorClaims from './distributor/DistributorClaims'
 import DistributorSales from './distributor/Sales'
 /*ghj*/
@@ -80,7 +80,7 @@ export default function Router() {
             so React Router doesn't treat 'create' as a poNo param */}
         <Route path="/distributor/orders/create" element={
           <ProtectedRoute requiredRole="distributor">
-            <DistributorCreateOrder />
+            <CreateOrder />
           </ProtectedRoute>
         } />
         <Route path="/distributor/orders" element={
