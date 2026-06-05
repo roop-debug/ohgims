@@ -130,6 +130,49 @@ export default function AdminDispatch() {
       .update({ status: 'dispatched' })
       .eq('po_id', newPONo)
 
+      // Fetch PO line items
+const { data: lineItems, error: lineItemError } = await supabase
+  .from('po_line_items')
+  .select('sku_id, quantity')
+  .eq('po_id', newPONo)
+
+if (lineItemError) {
+  console.error(lineItemError)
+  return
+}
+
+if (lineItems) {
+  for (const item of lineItems) {
+    const { data: currentInv, error: invError } = await supabase
+      .from('master_inventory')
+      .select('inventory_id, stock_out, total_stock')
+      .eq('sku_id', item.sku_id)
+      .single()
+
+    if (invError || !currentInv) {
+      console.error(invError)
+      continue
+    }
+
+    const newTotal = currentInv.total_stock - item.quantity
+
+    await supabase
+      .from('master_inventory')
+      .update({
+        stock_out: currentInv.stock_out + item.quantity,
+        total_stock: newTotal,
+        status:
+          newTotal <= 0
+            ? 'Out of Stock'
+            : newTotal <= 10
+            ? 'Low Stock'
+            : 'In Stock',
+        date: new Date().toISOString().split('T')[0],
+      })
+      .eq('inventory_id', currentInv.inventory_id)
+  }
+}
+
     setNewDistributor('')
     setNewPONo('')
     setNewETA('')
