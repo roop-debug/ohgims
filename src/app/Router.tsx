@@ -1,3 +1,5 @@
+// src/app/Router.tsx
+
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import ProtectedRoute from '../components/shared/ProtectedRoute'
@@ -7,8 +9,14 @@ import AdminInventory from './admin/Inventory'
 import AdminDistributors from './admin/Distributors'
 import AdminDispatch from './admin/Dispatch'
 import AdminClaims from './admin/Claims'
-import AdminOrders from './admin/Orders'
 import DistributorDashboard from './distributor/Dashboard'
+import DistributorInventory from './distributor/Inventory'
+import DistributorOrders from './distributor/Orders'
+import DistributorOrderDetails from './distributor/OrderDetails'
+import DistributorCreateOrder from './distributor/CreateOrder'
+import DistributorClaims from './distributor/DistributorClaims'
+import DistributorSales from './distributor/Sales'
+/*ghj*/
 
 function RootRedirect() {
   const { role, loading } = useAuth()
@@ -22,9 +30,12 @@ function RootRedirect() {
 
 export default function Router() {
   return (
-    <BrowserRouter basename='/'>
+    <BrowserRouter>
       <Routes>
+        {/* Root → redirect based on role */}
         <Route path="/" element={<RootRedirect />} />
+
+        {/* Login */}
         <Route path="/login" element={<Login />} />
 
         {/* Admin routes */}
@@ -53,18 +64,46 @@ export default function Router() {
             <AdminClaims />
           </ProtectedRoute>
         } />
-        <Route path="/admin/orders" element={
-          <ProtectedRoute requiredRole="admin">
-            <AdminOrders />
-          </ProtectedRoute>
-        } />
 
         {/* Distributor routes */}
-        <Route path="/distributor/*" element={
+        <Route path="/distributor" element={
           <ProtectedRoute requiredRole="distributor">
             <DistributorDashboard />
           </ProtectedRoute>
         } />
+        <Route path="/distributor/inventory" element={
+          <ProtectedRoute requiredRole="distributor">
+            <DistributorInventory />
+          </ProtectedRoute>
+        } />
+        {/* /distributor/orders/create must be before /distributor/orders/:poNo
+            so React Router doesn't treat 'create' as a poNo param */}
+        <Route path="/distributor/orders/create" element={
+          <ProtectedRoute requiredRole="distributor">
+            <DistributorCreateOrder />
+          </ProtectedRoute>
+        } />
+        <Route path="/distributor/orders" element={
+          <ProtectedRoute requiredRole="distributor">
+            <DistributorOrders />
+          </ProtectedRoute>
+        } />
+        <Route path="/distributor/orders/:poNo" element={
+          <ProtectedRoute requiredRole="distributor">
+            <DistributorOrderDetails />
+          </ProtectedRoute>
+        } />
+        <Route path="/distributor/claims" element={
+          <ProtectedRoute requiredRole="distributor">
+            <DistributorClaims />
+          </ProtectedRoute>
+        } />
+        <Route path="/distributor/sales" element={
+          <ProtectedRoute requiredRole="distributor">
+            <DistributorSales />
+          </ProtectedRoute>
+        } />
+
       </Routes>
     </BrowserRouter>
   )
