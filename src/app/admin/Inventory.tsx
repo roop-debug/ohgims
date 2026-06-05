@@ -94,17 +94,21 @@ async function handleAddItem() {
     })
 
   if (skuError) { console.error(skuError); return }
-
+    const initialStock = Number(newStock) || 0
   // 2. Create initial master_inventory row with 0 stock
   const { error: invError } = await supabase
     .from('master_inventory')
     .insert({
       sku_id: newSKU,
       date: new Date().toISOString().split('T')[0],
-      stock_in: 0,
+      stock_in: initialStock,
       stock_out: 0,
-      total_stock: 0,
-      status: 'Out of Stock',
+      total_stock: initialStock,
+      status:  initialStock <= 0
+        ? 'Out of Stock'
+        : initialStock <= 10
+        ? 'Low Stock'
+        : 'In Stock',
     })
     // --- ADDED in handleAddItem after SKU insert - create distributor_inventory for all existing distributors ---
 const { data: dists, error: distError } = await supabase
