@@ -28,7 +28,7 @@ export default function Login() {
 
         {/* Logo */}
         <div className="mb-8 text-center">
-          <h1 className="text-3xl font-bold text-[#ffffff]">Oh!G</h1>
+          <h1 className="text-3xl font-bold text-red-500">Oh!G</h1>
           <p className="text-sm text-gray-500 mt-1">Inventory Management System</p>
         </div>
 
