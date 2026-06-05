@@ -87,11 +87,16 @@ Deno.serve(async (req) => {
     })
 
     if (authError) {
-      return new Response(JSON.stringify({ error: authError.message }), {
-        status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      })
-    }
+  return new Response(JSON.stringify({ 
+    error: authError.message,
+    code: authError.code,
+    status: authError.status,
+    details: JSON.stringify(authError)
+  }), {
+    status: 400,
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  })
+}
 
     const newUserId = authData.user.id
 
