@@ -178,7 +178,7 @@ console.log('distributor_id:', selectedDispatch.distributor_id)
             .select('dist_inventory_id, stock_in, total_stock')
             .eq('distributor_id', selectedDispatch.distributor_id)
             .eq('sku_id', item.sku_id)
-            .single()
+            .maybeSingle()
 
           if (currentInv) {
             const newTotal = currentInv.total_stock + item.quantity
