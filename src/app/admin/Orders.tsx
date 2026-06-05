@@ -1,14 +1,18 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import AppLayout from '../../components/shared/AppLayout'
 import DataTable from '../../components/shared/DataTable'
 import Modal from '../../components/shared/Modal'
 import StatusBadge from '../../components/shared/StatusBadge'
 import type { ColumnDef } from '@tanstack/react-table'
+// --- ADDED ---
+import { supabase } from '../../lib/supabase'
+// --- END ---
 
 interface OrderRow {
   id: string
   po_no: string
   distributor: string
+  distributor_id: string
   created_at: string
   status: 'pending' | 'approved' | 'dispatched' | 'delivered' | 'cancelled'
 }
@@ -23,16 +27,60 @@ interface OrderItem {
   price: number
 }
 
-const data: OrderRow[] = []
-
 export default function AdminOrders() {
   const [selectedOrder, setSelectedOrder] = useState<OrderRow | null>(null)
   const [orderItems, setOrderItems] = useState<OrderItem[]>([])
   const [modalOpen, setModalOpen] = useState(false)
 
-  function handleRowClick(row: OrderRow) {
+  // --- ADDED data state and fetch ---
+  const [data, setData] = useState<OrderRow[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => { fetchOrders() }, [])
+
+  async function fetchOrders() {
+    const { data, error } = await supabase
+      .from('purchase_orders')
+      .select('po_id, created_at, status, distributor_id, distributors(name)')
+      .order('created_at', { ascending: false })
+
+    if (!error && data) {
+      setData(data.map((row: any) => ({
+        id: row.po_id,
+        po_no: row.po_id,
+        distributor: row.distributors?.name,
+        distributor_id: row.distributor_id,
+        created_at: new Date(row.created_at).toLocaleString('en-IN'),
+        status: row.status,
+      })))
+    }
+    setLoading(false)
+  }
+
+  async function fetchOrderItems(poId: string) {
+    const { data, error } = await supabase
+      .from('po_line_items')
+      .select('line_id, sku_id, item_name, quantity, rate, gst, price')
+      .eq('po_id', poId)
+
+    if (!error && data) {
+      setOrderItems(data.map((row: any) => ({
+        id: row.line_id,
+        sku: row.sku_id,
+        item_name: row.item_name,
+        quantity: row.quantity,
+        rate: row.rate,
+        gst: row.gst,
+        price: row.price,
+      })))
+    }
+  }
+  // --- END ---
+
+  async function handleRowClick(row: OrderRow) {
     setSelectedOrder(row)
-    setOrderItems([]) // replace with Supabase fetch after DB setup
+    setOrderItems([])
+    await fetchOrderItems(row.id)
     setModalOpen(true)
   }
 
@@ -41,6 +89,30 @@ export default function AdminOrders() {
     setSelectedOrder(null)
     setOrderItems([])
   }
+
+  // --- ADDED status update handlers ---
+  async function handleApprove() {
+    if (!selectedOrder) return
+    const { error } = await supabase
+      .from('purchase_orders')
+      .update({ status: 'approved' })
+      .eq('po_id', selectedOrder.id)
+    if (error) { console.error(error); return }
+    handleClose()
+    fetchOrders()
+  }
+
+  async function handleCancel() {
+    if (!selectedOrder) return
+    const { error } = await supabase
+      .from('purchase_orders')
+      .update({ status: 'cancelled' })
+      .eq('po_id', selectedOrder.id)
+    if (error) { console.error(error); return }
+    handleClose()
+    fetchOrders()
+  }
+  // --- END ---
 
   const columns: ColumnDef<OrderRow>[] = [
     { header: 'Sr No.', cell: ({ row }) => row.index + 1 },
@@ -79,14 +151,11 @@ export default function AdminOrders() {
   return (
     <AppLayout>
       <div className="flex flex-col gap-4">
-
-        {/* Header */}
         <h1 className="text-lg font-semibold text-gray-900">Orders Overview</h1>
-
-        {/* Table */}
         <DataTable
           columns={columns}
           data={data}
+          loading={loading}
           searchable
           exportable
           exportFilename="orders"
@@ -94,10 +163,8 @@ export default function AdminOrders() {
           onRowClick={handleRowClick}
           emptyMessage="No orders found"
         />
-
       </div>
 
-      {/* Order Details Modal */}
       <Modal
         open={modalOpen}
         title={selectedOrder ? `Order — ${selectedOrder.po_no}` : 'Order Details'}
@@ -105,8 +172,6 @@ export default function AdminOrders() {
       >
         {selectedOrder && (
           <div className="flex flex-col gap-4">
-
-            {/* Order meta */}
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <p className="text-xs text-gray-500">Distributor</p>
@@ -124,11 +189,8 @@ export default function AdminOrders() {
 
             <hr className="border-gray-100" />
 
-            {/* Line items table */}
             <div>
-              <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">
-                Line Items
-              </p>
+              <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">Line Items</p>
               <DataTable
                 columns={itemColumns}
                 data={orderItems}
@@ -137,32 +199,38 @@ export default function AdminOrders() {
               />
             </div>
 
-            {/* Status update */}
+            {/* --- ADDED wired action buttons --- */}
             {selectedOrder.status === 'pending' && (
               <div className="flex gap-3 mt-2">
-                <button className="flex-1 py-2 text-sm border border-gray-200 text-gray-600 rounded-lg hover:bg-gray-50 transition-colors">
+                <button
+                  onClick={handleCancel}
+                  className="flex-1 py-2 text-sm border border-gray-200 text-gray-600 rounded-lg hover:bg-gray-50 transition-colors"
+                >
                   Cancel Order
                 </button>
-                <button className="flex-1 py-2 text-sm bg-[#E8400C] text-white rounded-lg hover:bg-[#c93509] transition-colors">
+                <button
+                  onClick={handleApprove}
+                  className="flex-1 py-2 text-sm bg-[#E8400C] text-white rounded-lg hover:bg-[#c93509] transition-colors"
+                >
                   Approve Order
                 </button>
               </div>
             )}
+            {/* Mark Dispatched and Mark Delivered are handled via Dispatch page --- */}
             {selectedOrder.status === 'approved' && (
-              <button className="w-full py-2 text-sm bg-[#E8400C] text-white rounded-lg hover:bg-[#c93509] transition-colors mt-2">
-                Mark Dispatched
-              </button>
+              <p className="text-sm text-gray-400 text-center mt-2">
+                Order approved — create a dispatch from the Dispatch page.
+              </p>
             )}
             {selectedOrder.status === 'dispatched' && (
-              <button className="w-full py-2 text-sm bg-[#E8400C] text-white rounded-lg hover:bg-[#c93509] transition-colors mt-2">
-                Mark Delivered
-              </button>
+              <p className="text-sm text-gray-400 text-center mt-2">
+                Order dispatched — mark delivered from the Dispatch page.
+              </p>
             )}
-
+            {/* --- END --- */}
           </div>
         )}
       </Modal>
-
     </AppLayout>
   )
 }

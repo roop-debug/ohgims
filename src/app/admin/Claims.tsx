@@ -1,14 +1,18 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import AppLayout from '../../components/shared/AppLayout'
 import DataTable from '../../components/shared/DataTable'
 import Modal from '../../components/shared/Modal'
 import StatusBadge from '../../components/shared/StatusBadge'
 import type { ColumnDef } from '@tanstack/react-table'
+// --- ADDED ---
+import { supabase } from '../../lib/supabase'
+// --- END ---
 
 interface ClaimRow {
   id: string
   claim_number: string
   distributor: string
+  distributor_id: string
   claim_amount: number
   claim_type: string
   status: 'pending' | 'approved' | 'declined'
@@ -16,13 +20,59 @@ interface ClaimRow {
   selling_price: number
   reason: string
   invoice_url: string | null
+  sku_id: string
+  units: number
 }
-
-const data: ClaimRow[] = []
 
 export default function AdminClaims() {
   const [selectedClaim, setSelectedClaim] = useState<ClaimRow | null>(null)
   const [modalOpen, setModalOpen] = useState(false)
+
+  // --- ADDED data state and fetch ---
+  const [data, setData] = useState<ClaimRow[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => { fetchClaims() }, [])
+
+  async function fetchClaims() {
+    const { data, error } = await supabase
+      .from('claims')
+      .select(`
+        claim_id,
+        claim_type,
+        reimbursement_amt,
+        status,
+        rate,
+        selling_rate,
+        units,
+        reason,
+        invoice_url,
+        sku_id,
+        distributor_id,
+        distributors (name)
+      `)
+      .order('created_at', { ascending: false })
+
+    if (!error && data) {
+      setData(data.map((row: any) => ({
+        id: row.claim_id,
+        claim_number: row.claim_id,
+        distributor: row.distributors?.name,
+        distributor_id: row.distributor_id,
+        claim_amount: row.reimbursement_amt,
+        claim_type: row.claim_type,
+        status: row.status,
+        price_point: row.rate,
+        selling_price: row.selling_rate,
+        reason: row.reason,
+        invoice_url: row.invoice_url,
+        sku_id: row.sku_id,
+        units: row.units,
+      })))
+    }
+    setLoading(false)
+  }
+  // --- END ---
 
   function handleRowClick(row: ClaimRow) {
     setSelectedClaim(row)
@@ -34,15 +84,44 @@ export default function AdminClaims() {
     setSelectedClaim(null)
   }
 
+  // --- ADDED approve and decline handlers ---
+  async function handleApprove() {
+    if (!selectedClaim) return
+    const { error } = await supabase
+      .from('claims')
+      .update({ status: 'approved', resolved_at: new Date().toISOString() })
+      .eq('claim_id', selectedClaim.id)
+    if (error) { console.error(error); return }
+    handleClose()
+    fetchClaims()
+  }
+
+  async function handleDecline() {
+    if (!selectedClaim) return
+    const { error } = await supabase
+      .from('claims')
+      .update({ status: 'declined', resolved_at: new Date().toISOString() })
+      .eq('claim_id', selectedClaim.id)
+    if (error) { console.error(error); return }
+    handleClose()
+    fetchClaims()
+  }
+
+  async function getInvoiceUrl(path: string) {
+    const { data } = await supabase.storage
+      .from('claim-invoices')
+      .createSignedUrl(path, 60)
+    return data?.signedUrl ?? null
+  }
+  // --- END ---
+
   const columns: ColumnDef<ClaimRow>[] = [
     { header: 'No', cell: ({ row }) => row.index + 1 },
     {
       header: 'Claim ID',
       accessorKey: 'claim_number',
       cell: ({ getValue }) => (
-        <span className="text-[#E8400C] underline cursor-pointer">
-          {getValue() as string}
-        </span>
+        <span className="text-[#E8400C] underline cursor-pointer">{getValue() as string}</span>
       ),
     },
     { header: 'Distributor', accessorKey: 'distributor' },
@@ -62,14 +141,11 @@ export default function AdminClaims() {
   return (
     <AppLayout>
       <div className="flex flex-col gap-4">
-
-        {/* Header */}
         <h1 className="text-lg font-semibold text-gray-900">Claims</h1>
-
-        {/* Table */}
         <DataTable
           columns={columns}
           data={data}
+          loading={loading}
           searchable
           exportable
           exportFilename="claims"
@@ -77,19 +153,11 @@ export default function AdminClaims() {
           onRowClick={handleRowClick}
           emptyMessage="No claims found"
         />
-
       </div>
 
-      {/* Claim Approval Modal */}
-      <Modal
-        open={modalOpen}
-        title="Claim Approval"
-        onClose={handleClose}
-      >
+      <Modal open={modalOpen} title="Claim Approval" onClose={handleClose}>
         {selectedClaim && (
           <div className="flex flex-col gap-5">
-
-            {/* Fields grid */}
             <div className="grid grid-cols-2 gap-x-6 gap-y-4">
               <div>
                 <p className="text-xs font-medium text-[#E8400C] mb-1">Claim No</p>
@@ -110,6 +178,12 @@ export default function AdminClaims() {
                 </div>
               </div>
               <div>
+                <p className="text-xs font-medium text-[#E8400C] mb-1">SKU</p>
+                <div className="bg-gray-50 rounded-lg px-3 py-2 text-sm text-gray-900">
+                  {selectedClaim.sku_id}
+                </div>
+              </div>
+              <div>
                 <p className="text-xs font-medium text-[#E8400C] mb-1">Price Point</p>
                 <div className="bg-gray-50 rounded-lg px-3 py-2 text-sm text-gray-900">
                   ₹{selectedClaim.price_point.toLocaleString('en-IN')}
@@ -122,6 +196,12 @@ export default function AdminClaims() {
                 </div>
               </div>
               <div>
+                <p className="text-xs font-medium text-[#E8400C] mb-1">Units</p>
+                <div className="bg-gray-50 rounded-lg px-3 py-2 text-sm text-gray-900">
+                  {selectedClaim.units}
+                </div>
+              </div>
+              <div>
                 <p className="text-xs font-medium text-[#E8400C] mb-1">Claim Amount</p>
                 <div className="bg-gray-50 rounded-lg px-3 py-2 text-sm text-gray-900">
                   ₹{selectedClaim.claim_amount.toLocaleString('en-IN')}
@@ -129,7 +209,6 @@ export default function AdminClaims() {
               </div>
             </div>
 
-            {/* Reason */}
             <div>
               <p className="text-xs font-medium text-[#E8400C] mb-1">Reason</p>
               <div className="bg-gray-50 rounded-lg px-3 py-2 text-sm text-gray-900 min-h-[60px]">
@@ -137,43 +216,51 @@ export default function AdminClaims() {
               </div>
             </div>
 
-            {/* Invoice */}
+            {/* --- ADDED signed URL invoice view --- */}
             <div className="flex items-center gap-3">
               <p className="text-xs font-medium text-[#E8400C]">Invoice</p>
               {selectedClaim.invoice_url ? (
-                <a
-                  href={selectedClaim.invoice_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
+                <button
+                  onClick={async () => {
+                    const url = await getInvoiceUrl(selectedClaim.invoice_url!)
+                    if (url) window.open(url, '_blank')
+                  }}
                   className="px-4 py-2 text-sm bg-[#E8400C] text-white rounded-lg hover:bg-[#c93509] transition-colors"
                 >
                   View Invoice
-                </a>
+                </button>
               ) : (
                 <span className="text-sm text-gray-400">No invoice uploaded</span>
               )}
             </div>
+            {/* --- END --- */}
 
-            {/* Action buttons */}
-            <div className="flex gap-3 mt-2">
-              <button
-                onClick={handleClose}
-                className="flex-1 py-2 text-sm border border-[#E8400C] text-[#E8400C] rounded-lg hover:bg-orange-50 transition-colors"
-              >
-                Decline
-              </button>
-              <button
-                onClick={handleClose}
-                className="flex-1 py-2 text-sm bg-[#E8400C] text-white rounded-lg hover:bg-[#c93509] transition-colors"
-              >
-                Approve
-              </button>
-            </div>
-
+            {/* --- ADDED wired action buttons, only show if pending --- */}
+            {selectedClaim.status === 'pending' && (
+              <div className="flex gap-3 mt-2">
+                <button
+                  onClick={handleDecline}
+                  className="flex-1 py-2 text-sm border border-[#E8400C] text-[#E8400C] rounded-lg hover:bg-orange-50 transition-colors"
+                >
+                  Decline
+                </button>
+                <button
+                  onClick={handleApprove}
+                  className="flex-1 py-2 text-sm bg-[#E8400C] text-white rounded-lg hover:bg-[#c93509] transition-colors"
+                >
+                  Approve
+                </button>
+              </div>
+            )}
+            {selectedClaim.status !== 'pending' && (
+              <div className="flex justify-center">
+                <StatusBadge status={selectedClaim.status} />
+              </div>
+            )}
+            {/* --- END --- */}
           </div>
         )}
       </Modal>
-
     </AppLayout>
   )
 }
