@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import AppLayout from '../../components/shared/AppLayout'
 import DataTable from '../../components/shared/DataTable'
 import Modal from '../../components/shared/Modal'
@@ -23,8 +23,6 @@ interface DistributorRow {
   revenue: number
 }
 
-const data: DistributorRow[] = []
-
 const initialForm = {
   name: '',
   poc_name: '',
@@ -39,6 +37,8 @@ const initialForm = {
 }
 
 export default function AdminDistributors() {
+  const [data, setData] = useState<DistributorRow[]>([])
+  const [loading, setLoading] = useState(true)
   const [addModalOpen, setAddModalOpen] = useState(false)
   const [detailsModalOpen, setDetailsModalOpen] = useState(false)
   const [selectedDistributor, setSelectedDistributor] = useState<DistributorRow | null>(null)
@@ -46,6 +46,61 @@ export default function AdminDistributors() {
   const [showPassword, setShowPassword] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  const today = new Date().toISOString().split('T')[0]
+
+  useEffect(() => {
+    fetchDistributors()
+  }, [])
+
+  async function fetchDistributors() {
+    setLoading(true)
+
+    const { data: distributors } = await supabase
+      .from('distributors')
+      .select('*')
+      .order('created_at', { ascending: false })
+
+    if (!distributors) { setLoading(false); return }
+
+    // Fetch today's sales and orders for each distributor
+    const enriched = await Promise.all(
+      distributors.map(async (d) => {
+        const [
+          { data: salesData },
+          { data: ordersData },
+        ] = await Promise.all([
+          supabase
+            .from('sales_logs')
+            .select('units_sold, total_revenue')
+            .eq('distributor_id', d.distributor_id)
+            .eq('date', today),
+
+          supabase
+            .from('po_line_items')
+            .select('quantity, price, purchase_orders!inner(distributor_id, created_at)')
+            .eq('purchase_orders.distributor_id', d.distributor_id)
+            .gte('purchase_orders.created_at', `${today}T00:00:00`)
+            .lte('purchase_orders.created_at', `${today}T23:59:59`),
+        ])
+
+        const sold = salesData?.reduce((sum, s) => sum + s.units_sold, 0) ?? 0
+        const revenue = salesData?.reduce((sum, s) => sum + s.total_revenue, 0) ?? 0
+        const purchased = ordersData?.reduce((sum, o) => sum + o.quantity, 0) ?? 0
+
+        return {
+          ...d,
+          purchased,
+          sold,
+          total: purchased - sold,
+          revenue,
+        }
+      })
+    )
+
+    setData(enriched)
+    setLoading(false)
+  }
 
   function handleChange(key: keyof typeof initialForm, value: string) {
     setForm((prev) => ({ ...prev, [key]: value }))
@@ -90,15 +145,19 @@ export default function AdminDistributors() {
         return
       }
 
-      // Success — close modal and refresh
       handleClose()
-      // TODO: refetch distributors list after DB integration
+      fetchDistributors()
     } catch {
       setError('Network error — please try again')
     } finally {
       setSubmitting(false)
     }
   }
+
+  // KPI totals
+  const totalDistributors = data.length
+  const totalUnitsSold = data.reduce((sum, d) => sum + d.sold, 0)
+  const totalUnitsBought = data.reduce((sum, d) => sum + d.purchased, 0)
 
   const columns: ColumnDef<DistributorRow>[] = [
     { header: 'No', cell: ({ row }) => row.index + 1 },
@@ -122,9 +181,9 @@ export default function AdminDistributors() {
 
         {/* KPI Cards */}
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-          <KPICard label="No. of Distributors" value="—" />
-          <KPICard label="Total Units Sold" value="—" />
-          <KPICard label="Total Units Bought" value="—" />
+          <KPICard label="No. of Distributors" value={loading ? '—' : totalDistributors} />
+          <KPICard label="Total Units Sold" value={loading ? '—' : totalUnitsSold} />
+          <KPICard label="Total Units Bought" value={loading ? '—' : totalUnitsBought} />
         </div>
 
         {/* Header */}
@@ -142,6 +201,7 @@ export default function AdminDistributors() {
         <DataTable
           columns={columns}
           data={data}
+          loading={loading}
           searchable
           exportable
           exportFilename="distributors"
@@ -153,108 +213,49 @@ export default function AdminDistributors() {
       </div>
 
       {/* Add Distributor Modal */}
-      <Modal
-        open={addModalOpen}
-        title="Add Distributor"
-        onClose={handleClose}
-      >
+      <Modal open={addModalOpen} title="Add Distributor" onClose={handleClose}>
         <div className="flex flex-col gap-4">
-
           <div>
             <label className={labelClass}>Business Name</label>
-            <input
-              value={form.name}
-              onChange={(e) => handleChange('name', e.target.value)}
-              placeholder="e.g. ABC Distributors"
-              className={inputClass}
-            />
+            <input value={form.name} onChange={(e) => handleChange('name', e.target.value)} placeholder="e.g. ABC Distributors" className={inputClass} />
           </div>
-
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className={labelClass}>POC Name</label>
-              <input
-                value={form.poc_name}
-                onChange={(e) => handleChange('poc_name', e.target.value)}
-                placeholder="Contact person name"
-                className={inputClass}
-              />
+              <input value={form.poc_name} onChange={(e) => handleChange('poc_name', e.target.value)} placeholder="Contact person name" className={inputClass} />
             </div>
             <div>
               <label className={labelClass}>POC Contact</label>
-              <input
-                value={form.poc_contact}
-                onChange={(e) => handleChange('poc_contact', e.target.value)}
-                placeholder="e.g. 9876543210"
-                className={inputClass}
-              />
+              <input value={form.poc_contact} onChange={(e) => handleChange('poc_contact', e.target.value)} placeholder="e.g. 9876543210" className={inputClass} />
             </div>
           </div>
-
           <div>
             <label className={labelClass}>POC Email</label>
-            <input
-              type="email"
-              value={form.poc_email}
-              onChange={(e) => handleChange('poc_email', e.target.value)}
-              placeholder="e.g. contact@abc.com"
-              className={inputClass}
-            />
+            <p className="text-xs text-gray-400 mb-1">This email will be used as the distributor's login credentials.</p>
+            <input type="email" value={form.poc_email} onChange={(e) => handleChange('poc_email', e.target.value)} placeholder="e.g. contact@abc.com" className={inputClass} />
           </div>
-
           <div>
             <label className={labelClass}>Billing Address</label>
-            <textarea
-              value={form.billing_address}
-              onChange={(e) => handleChange('billing_address', e.target.value)}
-              placeholder="Full billing address"
-              rows={2}
-              className={inputClass}
-            />
+            <textarea value={form.billing_address} onChange={(e) => handleChange('billing_address', e.target.value)} placeholder="Full billing address" rows={2} className={inputClass} />
           </div>
-
           <div>
             <label className={labelClass}>Shipping Address</label>
-            <textarea
-              value={form.shipping_address}
-              onChange={(e) => handleChange('shipping_address', e.target.value)}
-              placeholder="Full shipping address"
-              rows={2}
-              className={inputClass}
-            />
+            <textarea value={form.shipping_address} onChange={(e) => handleChange('shipping_address', e.target.value)} placeholder="Full shipping address" rows={2} className={inputClass} />
           </div>
-
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className={labelClass}>GST No</label>
-              <input
-                value={form.gst_no}
-                onChange={(e) => handleChange('gst_no', e.target.value)}
-                placeholder="e.g. 27AAPFU0939F1ZV"
-                className={inputClass}
-              />
+              <input value={form.gst_no} onChange={(e) => handleChange('gst_no', e.target.value)} placeholder="e.g. 27AAPFU0939F1ZV" className={inputClass} />
             </div>
             <div>
               <label className={labelClass}>FSSAI No</label>
-              <input
-                value={form.fssai_no}
-                onChange={(e) => handleChange('fssai_no', e.target.value)}
-                placeholder="e.g. 10016011002763"
-                className={inputClass}
-              />
+              <input value={form.fssai_no} onChange={(e) => handleChange('fssai_no', e.target.value)} placeholder="e.g. 10016011002763" className={inputClass} />
             </div>
           </div>
-
           <div>
             <label className={labelClass}>Location <span className="text-gray-400">(optional)</span></label>
-            <input
-              value={form.location}
-              onChange={(e) => handleChange('location', e.target.value)}
-              placeholder="e.g. Mumbai"
-              className={inputClass}
-            />
+            <input value={form.location} onChange={(e) => handleChange('location', e.target.value)} placeholder="e.g. Mumbai" className={inputClass} />
           </div>
-
           <div>
             <label className={labelClass}>Password</label>
             <div className="relative">
@@ -274,11 +275,7 @@ export default function AdminDistributors() {
               </button>
             </div>
           </div>
-
-          {error && (
-            <p className="text-sm text-red-500">{error}</p>
-          )}
-
+          {error && <p className="text-sm text-red-500">{error}</p>}
           <button
             onClick={handleSubmit}
             disabled={submitting}
@@ -286,7 +283,6 @@ export default function AdminDistributors() {
           >
             {submitting ? 'Creating...' : 'Add Distributor'}
           </button>
-
         </div>
       </Modal>
 
@@ -326,9 +322,7 @@ export default function AdminDistributors() {
                 </div>
               )}
             </div>
-
             <hr className="border-gray-100" />
-
             <div className="grid grid-cols-2 gap-3">
               <div className="bg-gray-50 rounded-lg p-3">
                 <p className="text-xs text-gray-500">Purchased</p>
@@ -344,9 +338,7 @@ export default function AdminDistributors() {
               </div>
               <div className="bg-gray-50 rounded-lg p-3">
                 <p className="text-xs text-gray-500">Revenue</p>
-                <p className="text-lg font-semibold text-gray-900">
-                  ₹{selectedDistributor.revenue.toLocaleString('en-IN')}
-                </p>
+                <p className="text-lg font-semibold text-gray-900">₹{selectedDistributor.revenue.toLocaleString('en-IN')}</p>
               </div>
             </div>
           </div>
