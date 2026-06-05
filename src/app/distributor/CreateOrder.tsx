@@ -1,69 +1,45 @@
-// src/app/distributor/CreateOrder.tsx
-
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import AppLayout from '../../components/shared/AppLayout'
 
-// ── Type for SKU row in the order form ────────────────────────────────────────
-interface OrderFormRow {
-  skuId: string
+interface SKURow {
+  sku_id: string
   name: string
+  price: number
+  gst_rate: number
   quantity: number
-  price: number      // SKU.rate
-  gst: number        // GST percentage
-  totalPrice: number // auto-calculated: (price * quantity) + gst amount
-}
-// ─────────────────────────────────────────────────────────────────────────────
-
-// TODO: replace with Supabase query to fetch all SKUs on mount
-// const MOCK_SKUS = [
-//   { id: 'sku-1', name: 'Product A', unit: 'box', rate: 100, gst: 18 },
-//   { id: 'sku-2', name: 'Product B', unit: 'box', rate: 200, gst: 12 },
-// ]
-
-function calcTotalPrice(price: number, quantity: number, gst: number): number {
-  const base = price * quantity
-  return base + (base * gst) / 100
 }
 
-export default function DistributorCreateOrder() {
+const skus: SKURow[] = [] // replace with Supabase fetch after DB setup
+
+export default function CreateOrder() {
   const navigate = useNavigate()
+  const [items, setItems] = useState<SKURow[]>(skus)
+  const [submitting, setSubmitting] = useState(false)
 
-  // TODO: replace with Supabase query — fetch all SKUs and map to OrderFormRow[]
-  // useEffect(() => {
-  //   const fetchedSkus = await supabase.from('skus').select('*')
-  //   setRows(fetchedSkus.data.map((sku) => ({
-  //     skuId: sku.id,
-  //     name: sku.name,
-  //     quantity: 0,
-  //     price: sku.rate,
-  //     gst: sku.gst ?? 0,
-  //     totalPrice: 0,
-  //   })))
-  // }, [])
-  const [rows, setRows] = useState<OrderFormRow[]>([])
-
-  function handleQuantityChange(skuId: string, value: string) {
-    const quantity = Math.max(0, parseInt(value) || 0)
-    setRows((prev) =>
-      prev.map((row) =>
-        row.skuId === skuId
-          ? { ...row, quantity, totalPrice: calcTotalPrice(row.price, quantity, row.gst) }
-          : row
+  function handleQuantityChange(sku_id: string, value: number) {
+    setItems((prev) =>
+      prev.map((item) =>
+        item.sku_id === sku_id ? { ...item, quantity: Math.max(0, value) } : item
       )
     )
   }
 
-  async function handleReleasePurchaseOrder() {
-    const selectedRows = rows.filter((r) => r.quantity > 0)
-    if (selectedRows.length === 0) return
-    // TODO: Supabase insert into purchase_orders for auth().distributor_id
-    // TODO: Supabase insert into order_items for each selectedRow
-    // TODO: navigate to /distributor/orders after success
-    navigate('/distributor/orders')
+  const selectedItems = items.filter((i) => i.quantity > 0)
+
+  function calcTotal(item: SKURow) {
+    const base = item.price * item.quantity
+    const gst = (base * item.gst_rate) / 100
+    return base + gst
   }
 
-  function handleCancel() {
+  const grandTotal = selectedItems.reduce((sum, item) => sum + calcTotal(item), 0)
+
+  async function handleReleasePO() {
+    if (selectedItems.length === 0) return
+    setSubmitting(true)
+    // TODO: Supabase insert after DB setup
+    setSubmitting(false)
     navigate('/distributor/orders')
   }
 
@@ -71,75 +47,105 @@ export default function DistributorCreateOrder() {
     <AppLayout>
       <div className="flex flex-col gap-4">
 
-        {/* ── Create Claim shortcut ── */}
-        <div className="flex justify-end">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <h1 className="text-lg font-semibold text-gray-900">Create Order</h1>
           <button
-            onClick={() => navigate('/distributor/claims')}
-            className="flex items-center gap-1.5 bg-[#FEFDE8] text-[#C8102E] text-sm font-bold px-4 py-2 rounded-full border border-[#C8102E] hover:brightness-95 transition-all"
+            onClick={() => navigate('/distributor/claims/create')}
+            className="px-4 py-2 text-sm bg-[#E8400C] text-white rounded-lg hover:bg-[#c93509] transition-colors"
           >
-            <span className="text-base leading-none">⊕</span>
-            Create Claim
+            + Create Claim
           </button>
         </div>
 
-        {/* ── SKU table ── */}
-        <div className="rounded-2xl overflow-hidden border border-[#E0DDB0]">
-
-          {/* Column headers */}
-          <div className="grid grid-cols-[2fr_1fr_1fr_1fr_1fr] bg-[#FEFDE8] border-b border-[#E0DDB0] px-4 py-3">
-            <span className="text-[#C8102E] text-xs font-bold">Name</span>
-            <span className="text-[#C8102E] text-xs font-bold">Quantity</span>
-            <span className="text-[#C8102E] text-xs font-bold">Price</span>
-            <span className="text-[#C8102E] text-xs font-bold">GST</span>
-            <span className="text-[#C8102E] text-xs font-bold">Total Price</span>
-          </div>
-
-          {/* Rows */}
-          <div className="bg-[#FEFDE8] min-h-[400px]">
-            {rows.length === 0 ? (
-              <p className="text-center text-sm text-gray-400 py-16">
-                No SKUs available.
-              </p>
-            ) : (
-              rows.map((row) => (
-                <div
-                  key={row.skuId}
-                  className="grid grid-cols-[2fr_1fr_1fr_1fr_1fr] px-4 py-3 border-b border-[#E0DDB0] items-center"
-                >
-                  <span className="text-sm text-gray-800">{row.name}</span>
-                  <input
-                    type="number"
-                    min={0}
-                    value={row.quantity === 0 ? '' : row.quantity}
-                    onChange={(e) => handleQuantityChange(row.skuId, e.target.value)}
-                    placeholder="0"
-                    className="w-16 bg-white border border-[#E0DDB0] rounded-lg px-2 py-1 text-sm text-gray-800 outline-none focus:border-[#C8102E] transition-colors"
-                  />
-                  <span className="text-sm text-gray-800">₹{row.price}</span>
-                  <span className="text-sm text-gray-800">{row.gst}%</span>
-                  <span className="text-sm text-gray-800">
-                    ₹{row.totalPrice.toLocaleString()}
-                  </span>
-                </div>
-              ))
+        {/* SKU table */}
+        <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-gray-100 bg-gray-50">
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Quantity</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Price</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">GST</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Total Price</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {items.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="px-4 py-8 text-center text-sm text-gray-400">
+                    No SKUs available
+                  </td>
+                </tr>
+              ) : (
+                items.map((item) => {
+                  const base = item.price * item.quantity
+                  const gst = (base * item.gst_rate) / 100
+                  const total = base + gst
+                  return (
+                    <tr key={item.sku_id} className="hover:bg-gray-50 transition-colors">
+                      <td className="px-4 py-3 text-gray-900">{item.name}</td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => handleQuantityChange(item.sku_id, item.quantity - 1)}
+                            className="w-7 h-7 rounded border border-gray-200 flex items-center justify-center hover:bg-gray-100 transition-colors"
+                          >
+                            −
+                          </button>
+                          <input
+                            type="number"
+                            value={item.quantity}
+                            onChange={(e) => handleQuantityChange(item.sku_id, Number(e.target.value))}
+                            className="w-14 text-center border border-gray-200 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-[#E8400C]"
+                          />
+                          <button
+                            onClick={() => handleQuantityChange(item.sku_id, item.quantity + 1)}
+                            className="w-7 h-7 rounded border border-gray-200 flex items-center justify-center hover:bg-gray-100 transition-colors"
+                          >
+                            +
+                          </button>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-gray-700">₹{item.price.toLocaleString('en-IN')}</td>
+                      <td className="px-4 py-3 text-gray-700">{item.gst_rate}%</td>
+                      <td className="px-4 py-3 text-gray-700">
+                        {item.quantity > 0 ? `₹${total.toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : '—'}
+                      </td>
+                    </tr>
+                  )
+                })
+              )}
+            </tbody>
+            {selectedItems.length > 0 && (
+              <tfoot>
+                <tr className="border-t border-gray-200 bg-gray-50">
+                  <td colSpan={4} className="px-4 py-3 text-sm font-semibold text-gray-900 text-right">
+                    Grand Total
+                  </td>
+                  <td className="px-4 py-3 text-sm font-semibold text-gray-900">
+                    ₹{grandTotal.toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+                  </td>
+                </tr>
+              </tfoot>
             )}
-          </div>
-
+          </table>
         </div>
 
-        {/* ── Cancel / Release Purchase Order ── */}
-        <div className="flex items-center justify-between">
+        {/* Bottom buttons */}
+        <div className="flex items-center justify-between mt-2">
           <button
-            onClick={handleCancel}
-            className="text-[#C8102E] text-sm font-bold px-6 py-3 rounded-2xl border border-[#C8102E] hover:bg-[#C8102E]/5 transition-colors"
+            onClick={() => navigate('/distributor/orders')}
+            className="px-4 py-2 text-sm border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
           >
             Cancel
           </button>
           <button
-            onClick={handleReleasePurchaseOrder}
-            className="bg-[#C8102E] text-white text-sm font-bold px-6 py-3 rounded-full hover:brightness-90 transition-all"
+            onClick={handleReleasePO}
+            disabled={submitting || selectedItems.length === 0}
+            className="px-4 py-2 text-sm bg-[#E8400C] text-white rounded-lg hover:bg-[#c93509] transition-colors disabled:opacity-50"
           >
-            Release Purchase Order
+            {submitting ? 'Releasing...' : 'Release Purchase Order'}
           </button>
         </div>
 

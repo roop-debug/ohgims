@@ -1,151 +1,177 @@
-// src/app/distributor/Orders.tsx
-
-import { useState, useMemo } from 'react'
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import AppLayout from '../../components/shared/AppLayout'
-import type { PurchaseOrder } from '../../types'
+import DataTable from '../../components/shared/DataTable'
+import Modal from '../../components/shared/Modal'
+import StatusBadge from '../../components/shared/StatusBadge'
+import type { ColumnDef } from '@tanstack/react-table'
 
-// ── Type for joined view (replace with Supabase join) ─────────────────────────
 interface OrderRow {
-  sr: number
-  poNo: string
-  purchaseDateTime: string
-  status: PurchaseOrder['status']
+  id: string
+  po_no: string
+  created_at: string
+  status: 'pending' | 'approved' | 'dispatched' | 'delivered' | 'cancelled'
   eta: string | null
 }
-// ─────────────────────────────────────────────────────────────────────────────
 
-// TODO: replace with Supabase query filtered by auth().distributor_id
-// const MOCK_ORDERS: OrderRow[] = [
-//   { sr: 1, poNo: 'PO-2026-0001', purchaseDateTime: '2026-06-01 10:00', status: 'pending',    eta: null },
-//   { sr: 2, poNo: 'PO-2026-0002', purchaseDateTime: '2026-06-02 14:30', status: 'dispatched', eta: '2026-06-05' },
-// ]
-
-const STATUS_STYLES: Record<PurchaseOrder['status'], string> = {
-  pending:    'text-amber-500',
-  approved:   'text-blue-500',
-  dispatched: 'text-purple-500',
-  delivered:  'text-green-600',
-  cancelled:  'text-red-500',
+interface OrderItem {
+  id: string
+  sku: string
+  item_name: string
+  quantity: number
+  rate: number
+  gst: number
+  price: number
 }
 
-function exportToCSV(rows: OrderRow[]) {
-  // TODO: replace with real Supabase data when backend is wired
-  const headers = ['Sr No.', 'PO No.', 'Purchase Date/Time', 'Status', 'ETA']
-  const csvRows = rows.map((r) =>
-    [r.sr, r.poNo, r.purchaseDateTime, r.status, r.eta ?? '-'].join(',')
-  )
-  const blob = new Blob([[headers.join(','), ...csvRows].join('\n')], {
-    type: 'text/csv',
-  })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = 'orders.csv'
-  a.click()
-  URL.revokeObjectURL(url)
-}
+const data: OrderRow[] = []
 
 export default function DistributorOrders() {
+  const [loading] = useState(false)
+  const [selectedOrder, setSelectedOrder] = useState<OrderRow | null>(null)
+  const [orderItems] = useState<OrderItem[]>([])
+  const [modalOpen, setModalOpen] = useState(false)
   const navigate = useNavigate()
 
-  const [todayOnly, setTodayOnly] = useState(false)
+  function handleRowClick(row: OrderRow) {
+    setSelectedOrder(row)
+    setModalOpen(true)
+  }
 
-  // TODO: replace with Supabase query filtered by auth().distributor_id
-  const [orders] = useState<OrderRow[]>([])
+  function handleClose() {
+    setModalOpen(false)
+    setSelectedOrder(null)
+  }
 
-  const filteredOrders = useMemo(() => {
-    if (!todayOnly) return orders
-    const today = new Date().toISOString().slice(0, 10)
-    return orders.filter((o) => o.purchaseDateTime.startsWith(today))
-  }, [orders, todayOnly])
+  const columns: ColumnDef<OrderRow>[] = [
+    { header: 'Sr No.', cell: ({ row }) => row.index + 1 },
+    { header: 'PO No.', accessorKey: 'po_no' },
+    {
+      header: 'Purchase Date/Time',
+      accessorKey: 'created_at',
+      cell: ({ getValue }) => new Date(getValue() as string).toLocaleString('en-IN'),
+    },
+    {
+      header: 'Status',
+      accessorKey: 'status',
+      cell: ({ getValue }) => <StatusBadge status={getValue() as any} />,
+    },
+    {
+      header: 'ETA',
+      accessorKey: 'eta',
+      cell: ({ getValue }) => getValue() ? new Date(getValue() as string).toLocaleDateString('en-IN') : '—',
+    },
+  ]
+
+  const itemColumns: ColumnDef<OrderItem>[] = [
+    { header: 'Sr No.', cell: ({ row }) => row.index + 1 },
+    { header: 'SKU', accessorKey: 'sku' },
+    { header: 'Item Name', accessorKey: 'item_name' },
+    { header: 'Quantity', accessorKey: 'quantity' },
+    {
+      header: 'Rate',
+      accessorKey: 'rate',
+      cell: ({ getValue }) => `₹${(getValue() as number).toLocaleString('en-IN')}`,
+    },
+    {
+      header: 'GST',
+      accessorKey: 'gst',
+      cell: ({ getValue }) => `${getValue()}%`,
+    },
+    {
+      header: 'Price',
+      accessorKey: 'price',
+      cell: ({ getValue }) => `₹${(getValue() as number).toLocaleString('en-IN')}`,
+    },
+  ]
 
   return (
     <AppLayout>
       <div className="flex flex-col gap-4">
 
-        {/* ── Main card ── */}
-        <div className="rounded-2xl overflow-hidden border border-[#C8102E]">
-
-          {/* Red header */}
-          <div className="bg-[#C8102E] px-5 py-4 flex items-center gap-4">
-            <h1 className="text-white text-sm font-bold uppercase tracking-wider flex-1">
-              Orders Overview
-            </h1>
-
-            {/* TODO: open filter panel/drawer on click */}
-            <button className="text-white text-sm font-semibold hover:opacity-75 transition-opacity">
-              Filters
-            </button>
-
-            {/* Today toggle */}
-            <button
-              onClick={() => setTodayOnly((prev) => !prev)}
-              className={`text-sm font-semibold transition-opacity px-1 ${
-                todayOnly ? 'text-yellow-300' : 'text-white hover:opacity-75'
-              }`}
-            >
-              Today
-            </button>
-
-            {/* Create Orders */}
-            <button
-              onClick={() => navigate('/distributor/orders/create')}
-              className="flex items-center gap-1.5 bg-[#FEFDE8] text-[#C8102E] text-sm font-bold px-4 py-2 rounded-full hover:brightness-95 transition-all"
-            >
-              <span className="text-base leading-none">⊕</span>
-              Create Orders
-            </button>
-          </div>
-
-          {/* Column headers */}
-          <div className="grid grid-cols-[60px_1fr_2fr_1fr_1fr] bg-[#FEFDE8] border-b border-[#E0DDB0] px-4 py-2">
-            <span className="text-[#C8102E] text-xs font-bold">Sr No.</span>
-            <span className="text-[#C8102E] text-xs font-bold">PO No.</span>
-            <span className="text-[#C8102E] text-xs font-bold">Purchase Date/Time</span>
-            <span className="text-[#C8102E] text-xs font-bold">Status</span>
-            <span className="text-[#C8102E] text-xs font-bold">ETA</span>
-          </div>
-
-          {/* Rows */}
-          <div className="bg-[#FEFDE8] min-h-[400px]">
-            {filteredOrders.length === 0 ? (
-              <p className="text-center text-sm text-gray-400 py-16">
-                No orders found.
-              </p>
-            ) : (
-              filteredOrders.map((row) => (
-                <div
-                  key={row.sr}
-                  onClick={() => navigate(`/distributor/orders/${row.poNo}`)}
-                  className="grid grid-cols-[60px_1fr_2fr_1fr_1fr] px-4 py-3 border-b border-[#E0DDB0] cursor-pointer hover:brightness-95 transition-all"
-                >
-                  <span className="text-sm text-gray-800">{row.sr}</span>
-                  <span className="text-sm text-gray-800">{row.poNo}</span>
-                  <span className="text-sm text-gray-800">{row.purchaseDateTime}</span>
-                  <span className={`text-xs font-semibold capitalize ${STATUS_STYLES[row.status]}`}>
-                    {row.status}
-                  </span>
-                  <span className="text-sm text-gray-800">{row.eta ?? '—'}</span>
-                </div>
-              ))
-            )}
-          </div>
-
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <h1 className="text-lg font-semibold text-gray-900">Orders Overview</h1>
+          <button
+            onClick={() => navigate('/distributor/orders/create')}
+            className="px-4 py-2 text-sm bg-[#E8400C] text-white rounded-lg hover:bg-[#c93509] transition-colors"
+          >
+            + Create Orders
+          </button>
         </div>
 
-        {/* ── Export to sheets ── */}
+        {/* Table */}
+        <DataTable
+          columns={columns}
+          data={data}
+          loading={loading}
+          searchable
+          exportable
+          exportFilename="orders"
+          todayToggle
+          onRowClick={handleRowClick}
+          emptyMessage="No orders found"
+        />
+
+        {/* Export to sheets */}
         <div className="flex justify-end">
-          <button
-            onClick={() => exportToCSV(filteredOrders)}
-            className="bg-[#C8102E] text-white text-sm font-bold px-6 py-3 rounded-full hover:brightness-90 transition-all"
-          >
+          <button className="px-4 py-2 text-sm border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
             Export to sheets
           </button>
         </div>
 
       </div>
+
+      {/* Order Details Modal */}
+      <Modal
+        open={modalOpen}
+        title={selectedOrder ? `Order — ${selectedOrder.po_no}` : 'Order Details'}
+        onClose={handleClose}
+      >
+        {selectedOrder && (
+          <div className="flex flex-col gap-4">
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <p className="text-xs text-gray-500">PO No.</p>
+                <p className="text-sm font-medium text-gray-900">{selectedOrder.po_no}</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500">Status</p>
+                <StatusBadge status={selectedOrder.status} />
+              </div>
+              <div>
+                <p className="text-xs text-gray-500">Date/Time</p>
+                <p className="text-sm font-medium text-gray-900">
+                  {new Date(selectedOrder.created_at).toLocaleString('en-IN')}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500">ETA</p>
+                <p className="text-sm font-medium text-gray-900">
+                  {selectedOrder.eta ? new Date(selectedOrder.eta).toLocaleDateString('en-IN') : '—'}
+                </p>
+              </div>
+            </div>
+
+            <hr className="border-gray-100" />
+
+            <div>
+              <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">
+                Line Items
+              </p>
+              <DataTable
+                columns={itemColumns}
+                data={orderItems}
+                searchable={false}
+                emptyMessage="No items in this order"
+              />
+            </div>
+
+          </div>
+        )}
+      </Modal>
+
     </AppLayout>
   )
 }
-
