@@ -1,395 +1,288 @@
-// src/app/distributor/DistributorClaims.tsx
-
-import { useState, useMemo } from 'react'
+import { useState } from 'react'
 import AppLayout from '../../components/shared/AppLayout'
-import type { Claim } from '../../types'
+import DataTable from '../../components/shared/DataTable'
+import Modal from '../../components/shared/Modal'
+import StatusBadge from '../../components/shared/StatusBadge'
+import type { ColumnDef } from '@tanstack/react-table'
 
-// ── Types ─────────────────────────────────────────────────────────────────────
 interface ClaimRow {
-  sr: number
-  claimId: string
-  claimAmount: number
-  claimType: string
-  status: Claim['status']
+  id: string
+  claim_id: string
+  claim_type: 'sale' | 'reimbursement'
+  reimbursement_amt: number
+  status: 'pending' | 'approved' | 'declined'
 }
 
-interface ClaimForm {
-  invoiceFile: File | null
-  skuId: string
-  rate: number
-  sellingRate: string
-  units: string
-  reimbursementAmount: number
-  claimType: string
-  reason: string
-}
-// ─────────────────────────────────────────────────────────────────────────────
+const data: ClaimRow[] = []
 
-// TODO: replace with Supabase query filtered by auth().distributor_id
-// const MOCK_CLAIMS: ClaimRow[] = [
-//   { sr: 1, claimId: 'CLM-2026-0001', claimAmount: 1200, claimType: 'Damage',   status: 'pending' },
-//   { sr: 2, claimId: 'CLM-2026-0002', claimAmount: 850,  claimType: 'Shortage', status: 'approved' },
-// ]
-
-// TODO: replace with Supabase query to fetch all SKUs for the dropdown
-// const MOCK_SKUS = [
-//   { id: 'sku-1', name: 'Product A', rate: 100 },
-//   { id: 'sku-2', name: 'Product B', rate: 200 },
-// ]
-
-const CLAIM_TYPES = ['Damage', 'Shortage', 'Expiry', 'Other']
-
-const STATUS_STYLES: Record<Claim['status'], string> = {
-  pending:  'text-amber-500',
-  approved: 'text-green-600',
-  declined: 'text-red-500',
-}
-
-const EMPTY_FORM: ClaimForm = {
-  invoiceFile:         null,
-  skuId:               '',
-  rate:                0,
-  sellingRate:         '',
-  units:               '',
-  reimbursementAmount: 0,
-  claimType:           '',
-  reason:              '',
+const initialForm = {
+  sku_id: '',
+  rate: '',
+  selling_rate: '',
+  units: '',
+  reimbursement_amt: '',
+  claim_type: '' as 'sale' | 'reimbursement' | '',
+  reason: '',
+  invoice_url: '',
 }
 
 export default function DistributorClaims() {
-  const [searchQuery, setSearchQuery] = useState('')
-  const [todayOnly, setTodayOnly]     = useState(false)
-  const [showModal, setShowModal]     = useState(false)
-  const [form, setForm]               = useState<ClaimForm>(EMPTY_FORM)
+  const [loading] = useState(false)
+  const [createModalOpen, setCreateModalOpen] = useState(false)
+  const [detailsModalOpen, setDetailsModalOpen] = useState(false)
+  const [selectedClaim, setSelectedClaim] = useState<ClaimRow | null>(null)
+  const [form, setForm] = useState(initialForm)
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [invoiceFile, setInvoiceFile] = useState<File | null>(null)
 
-  // TODO: replace with Supabase query filtered by auth().distributor_id
-  const [claims] = useState<ClaimRow[]>([])
+  function handleChange(key: keyof typeof initialForm, value: string) {
+    const updated = { ...form, [key]: value }
 
-  // TODO: replace with Supabase query to fetch all SKUs
-  const [skus] = useState<{ id: string; name: string; rate: number }[]>([])
-
-  const filteredClaims = useMemo(() => {
-    let result = claims
-    if (todayOnly) {
-      // TODO: filter by created_at date once Supabase data is wired
+    // Auto-calc reimbursement amount
+    if (key === 'rate' || key === 'selling_rate' || key === 'units') {
+      const rate = parseFloat(key === 'rate' ? value : form.rate) || 0
+      const sellingRate = parseFloat(key === 'selling_rate' ? value : form.selling_rate) || 0
+      const units = parseInt(key === 'units' ? value : form.units) || 0
+      const reimbursement = (rate - sellingRate) * units
+      updated.reimbursement_amt = reimbursement > 0 ? reimbursement.toFixed(2) : '0'
     }
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase()
-      result = result.filter(
-        (c) =>
-          c.claimId.toLowerCase().includes(q) ||
-          c.claimType.toLowerCase().includes(q)
-      )
+
+    setForm(updated)
+  }
+
+  function handleRowClick(row: ClaimRow) {
+    setSelectedClaim(row)
+    setDetailsModalOpen(true)
+  }
+
+  function handleCloseCreate() {
+    setCreateModalOpen(false)
+    setForm(initialForm)
+    setError(null)
+    setInvoiceFile(null)
+  }
+
+  async function handleSubmit() {
+    setError(null)
+    if (!form.sku_id || !form.selling_rate || !form.units || !form.claim_type) {
+      setError('Please fill all required fields')
+      return
     }
-    return result
-  }, [claims, searchQuery, todayOnly])
-
-  function handleOpenModal() {
-    setForm(EMPTY_FORM)
-    setShowModal(true)
+    setSubmitting(true)
+    // TODO: Supabase insert after DB setup
+    setSubmitting(false)
+    handleCloseCreate()
   }
 
-  function handleCloseModal() {
-    setShowModal(false)
-  }
+  const columns: ColumnDef<ClaimRow>[] = [
+    { header: 'Sr No.', cell: ({ row }) => row.index + 1 },
+    { header: 'Claim ID', accessorKey: 'claim_id' },
+    {
+      header: 'Claim Amount',
+      accessorKey: 'reimbursement_amt',
+      cell: ({ getValue }) => `₹${(getValue() as number).toLocaleString('en-IN')}`,
+    },
+    { header: 'Claim Type', accessorKey: 'claim_type' },
+    {
+      header: 'Status',
+      accessorKey: 'status',
+      cell: ({ getValue }) => <StatusBadge status={getValue() as any} />,
+    },
+  ]
 
-  function handleSkuChange(skuId: string) {
-    const selected = skus.find((s) => s.id === skuId)
-    setForm((prev) => ({
-      ...prev,
-      skuId,
-      rate: selected?.rate ?? 0,
-      reimbursementAmount: calcReimbursement(
-        selected?.rate ?? 0,
-        prev.sellingRate,
-        prev.units
-      ),
-    }))
-  }
-
-  function handleSellingRateChange(value: string) {
-    setForm((prev) => ({
-      ...prev,
-      sellingRate: value,
-      reimbursementAmount: calcReimbursement(prev.rate, value, prev.units),
-    }))
-  }
-
-  function handleUnitsChange(value: string) {
-    setForm((prev) => ({
-      ...prev,
-      units: value,
-      reimbursementAmount: calcReimbursement(prev.rate, prev.sellingRate, value),
-    }))
-  }
-
-  function calcReimbursement(
-    rate: number,
-    sellingRate: string,
-    units: string
-  ): number {
-    const sr = parseFloat(sellingRate) || 0
-    const u  = parseFloat(units) || 0
-    return Math.max(0, (rate - sr) * u)
-  }
-
-  async function handleSubmitClaim() {
-    if (!form.skuId || !form.units || !form.claimType) return
-    // TODO: Supabase storage upload for form.invoiceFile
-    // TODO: Supabase insert into claims for auth().distributor_id
-    // TODO: refetch claims after insert
-    handleCloseModal()
-  }
+  const inputClass = 'w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#E8400C]'
+  const labelClass = 'block text-sm font-medium text-gray-700 mb-1'
 
   return (
     <AppLayout>
       <div className="flex flex-col gap-4">
 
-        {/* ── Create Claim button ── */}
-        <div className="flex justify-end">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <h1 className="text-lg font-semibold text-gray-900">Claims</h1>
           <button
-            onClick={handleOpenModal}
-            className="flex items-center gap-1.5 bg-[#FEFDE8] text-[#C8102E] text-sm font-bold px-4 py-2 rounded-full border border-[#C8102E] hover:brightness-95 transition-all"
+            onClick={() => setCreateModalOpen(true)}
+            className="px-4 py-2 text-sm bg-[#E8400C] text-white rounded-lg hover:bg-[#c93509] transition-colors"
           >
-            <span className="text-base leading-none">⊕</span>
-            Create Claim
+            + Create Claim
           </button>
         </div>
 
-        {/* ── Claims card ── */}
-        <div className="rounded-2xl overflow-hidden border border-[#C8102E]">
-
-          {/* Red header */}
-          <div className="bg-[#C8102E] px-5 pt-4 pb-3 flex items-end gap-4">
-            <div className="flex flex-col gap-3 flex-1">
-              <h1 className="text-white text-sm font-bold uppercase tracking-wider">
-                Inventory
-              </h1>
-              <div className="flex items-center gap-3">
-                <input
-                  type="text"
-                  placeholder="Search"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-48 rounded-full bg-gray-100 text-gray-600 text-sm px-4 py-1.5 outline-none placeholder:text-gray-400"
-                />
-                {/* TODO: open filter panel/drawer on click */}
-                <button className="text-white text-sm font-semibold hover:opacity-75 transition-opacity">
-                  Filters
-                </button>
-              </div>
-            </div>
-            <button
-              onClick={() => setTodayOnly((prev) => !prev)}
-              className={`text-sm font-bold pb-1 transition-opacity ${
-                todayOnly ? 'text-yellow-300' : 'text-white hover:opacity-75'
-              }`}
-            >
-              Today
-            </button>
-          </div>
-
-          {/* Column headers */}
-          <div className="grid grid-cols-[60px_1fr_1fr_1fr_1fr] bg-[#FEFDE8] border-b border-[#E0DDB0] px-4 py-2">
-            <span className="text-[#C8102E] text-xs font-bold">Sr No.</span>
-            <span className="text-[#C8102E] text-xs font-bold">Claim ID</span>
-            <span className="text-[#C8102E] text-xs font-bold">Claim Amount</span>
-            <span className="text-[#C8102E] text-xs font-bold">Claim Type</span>
-            <span className="text-[#C8102E] text-xs font-bold">Status</span>
-          </div>
-
-          {/* Rows */}
-          <div className="bg-[#FEFDE8] min-h-[400px]">
-            {filteredClaims.length === 0 ? (
-              <p className="text-center text-sm text-gray-400 py-16">
-                No claims found.
-              </p>
-            ) : (
-              filteredClaims.map((row) => (
-                <div
-                  key={row.sr}
-                  className="grid grid-cols-[60px_1fr_1fr_1fr_1fr] px-4 py-3 border-b border-[#E0DDB0]"
-                >
-                  <span className="text-sm text-gray-800">{row.sr}</span>
-                  <span className="text-sm text-gray-800">{row.claimId}</span>
-                  <span className="text-sm text-gray-800">₹{row.claimAmount.toLocaleString()}</span>
-                  <span className="text-sm text-gray-800">{row.claimType}</span>
-                  <span className={`text-xs font-semibold capitalize ${STATUS_STYLES[row.status]}`}>
-                    {row.status}
-                  </span>
-                </div>
-              ))
-            )}
-          </div>
-
-        </div>
+        {/* Table */}
+        <DataTable
+          columns={columns}
+          data={data}
+          loading={loading}
+          searchable
+          exportable
+          exportFilename="claims"
+          todayToggle
+          onRowClick={handleRowClick}
+          emptyMessage="No claims found"
+        />
 
       </div>
 
-      {/* ── Create Claim Modal ── */}
-      {showModal && (
-        <div
-          className="fixed inset-0 z-40 bg-black/50 flex items-center justify-center p-4"
-          onClick={handleCloseModal}
-        >
-          <div
-            className="w-full max-w-xl bg-[#FEFDE8] rounded-2xl p-6 flex flex-col gap-5"
-            onClick={(e) => e.stopPropagation()}
-          >
+      {/* Create Claim Modal */}
+      <Modal
+        open={createModalOpen}
+        title="Create Claim"
+        onClose={handleCloseCreate}
+      >
+        <div className="flex flex-col gap-4">
 
-            {/* Invoice row */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <span className="text-[#C8102E] text-sm font-bold">Invoice :</span>
-                <label className="bg-[#C8102E] text-white text-sm font-bold px-4 py-2 rounded-lg cursor-pointer hover:brightness-90 transition-all">
-                  Upload Invoice
-                  <input
-                    type="file"
-                    accept="image/*,application/pdf"
-                    className="hidden"
-                    onChange={(e) =>
-                      setForm((prev) => ({
-                        ...prev,
-                        invoiceFile: e.target.files?.[0] ?? null,
-                      }))
-                    }
-                  />
-                </label>
-                {form.invoiceFile && (
-                  <span className="text-xs text-gray-600 truncate max-w-[120px]">
-                    {form.invoiceFile.name}
-                  </span>
-                )}
-              </div>
-              <button
-                onClick={handleCloseModal}
-                className="text-[#C8102E] text-lg font-bold hover:opacity-75 transition-opacity"
-              >
-                X
-              </button>
-            </div>
+          {/* Invoice upload */}
+          <div className="flex items-center gap-3">
+            <label className="text-sm font-medium text-gray-700">Invoice</label>
+            <label className="px-4 py-2 text-sm bg-[#E8400C] text-white rounded-lg hover:bg-[#c93509] transition-colors cursor-pointer">
+              {invoiceFile ? invoiceFile.name : 'Upload Invoice'}
+              <input
+                type="file"
+                accept="image/*,application/pdf"
+                className="hidden"
+                onChange={(e) => setInvoiceFile(e.target.files?.[0] ?? null)}
+              />
+            </label>
+          </div>
 
-            {/* SKU row */}
-            <div className="flex items-center gap-3">
-              <span className="text-[#C8102E] text-sm font-bold w-24">SKU :</span>
-              <div className="flex items-center gap-2">
-                <input
-                  type="text"
-                  value={skus.find((s) => s.id === form.skuId)?.name ?? ''}
-                  readOnly
-                  className="w-36 bg-white border border-[#E0DDB0] rounded-lg px-3 py-2 text-sm text-gray-800 outline-none"
-                />
-                {/* TODO: replace with proper SKU dropdown once Supabase is wired */}
-                <select
-                  value={form.skuId}
-                  onChange={(e) => handleSkuChange(e.target.value)}
-                  className="bg-[#C8102E] text-white rounded-lg px-2 py-2 text-sm outline-none cursor-pointer"
-                >
-                  <option value="">▾</option>
-                  {skus.map((s) => (
-                    <option key={s.id} value={s.id}>{s.name}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
+          {/* SKU */}
+          <div>
+            <label className={labelClass}>SKU</label>
+            <select
+              value={form.sku_id}
+              onChange={(e) => handleChange('sku_id', e.target.value)}
+              className={inputClass}
+            >
+              <option value="">Select SKU...</option>
+              {/* populated from Supabase after DB setup */}
+            </select>
+          </div>
 
-            {/* Rate / Selling Rate / Units row */}
-            <div className="flex items-center gap-4 flex-wrap">
-              <div className="flex items-center gap-2">
-                <span className="text-[#C8102E] text-sm font-bold">Rate:</span>
-                <input
-                  type="text"
-                  value={form.rate || ''}
-                  readOnly
-                  className="w-24 bg-gray-100 border border-[#E0DDB0] rounded-lg px-3 py-2 text-sm text-gray-500 outline-none"
-                />
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-[#C8102E] text-sm font-bold">Selling Rate:</span>
-                <input
-                  type="number"
-                  min={0}
-                  value={form.sellingRate}
-                  onChange={(e) => handleSellingRateChange(e.target.value)}
-                  className="w-24 bg-white border border-[#E0DDB0] rounded-lg px-3 py-2 text-sm text-gray-800 outline-none focus:border-[#C8102E] transition-colors"
-                />
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-[#C8102E] text-sm font-bold">Units:</span>
-                <input
-                  type="number"
-                  min={0}
-                  value={form.units}
-                  onChange={(e) => handleUnitsChange(e.target.value)}
-                  className="w-20 bg-white border border-[#E0DDB0] rounded-lg px-3 py-2 text-sm text-gray-800 outline-none focus:border-[#C8102E] transition-colors"
-                />
-              </div>
-            </div>
-
-            {/* Reimbursement Amount / Type row */}
-            <div className="flex items-center gap-4 flex-wrap">
-              <div className="flex items-center gap-2">
-                <span className="text-[#C8102E] text-sm font-bold">Reimbursement Amount :</span>
-                <input
-                  type="text"
-                  value={form.reimbursementAmount || ''}
-                  readOnly
-                  className="w-24 bg-gray-100 border border-[#E0DDB0] rounded-lg px-3 py-2 text-sm text-gray-500 outline-none"
-                />
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-[#C8102E] text-sm font-bold">Type :</span>
-                <div className="flex items-center gap-1">
-                  <input
-                    type="text"
-                    value={form.claimType}
-                    readOnly
-                    className="w-28 bg-white border border-[#E0DDB0] rounded-lg px-3 py-2 text-sm text-gray-800 outline-none"
-                  />
-                  <select
-                    value={form.claimType}
-                    onChange={(e) => setForm((prev) => ({ ...prev, claimType: e.target.value }))}
-                    className="bg-[#C8102E] text-white rounded-lg px-2 py-2 text-sm outline-none cursor-pointer"
-                  >
-                    <option value="">▾</option>
-                    {CLAIM_TYPES.map((t) => (
-                      <option key={t} value={t}>{t}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-            </div>
-
-            {/* Reason row */}
-            <div className="flex items-start gap-2">
-              <span className="text-[#C8102E] text-sm font-bold w-24 pt-2">Reason :</span>
-              <textarea
-                value={form.reason}
-                onChange={(e) => setForm((prev) => ({ ...prev, reason: e.target.value }))}
-                rows={3}
-                className="flex-1 bg-white border border-[#E0DDB0] rounded-lg px-3 py-2 text-sm text-gray-800 outline-none focus:border-[#C8102E] transition-colors resize-none"
+          {/* Rate, Selling Rate, Units */}
+          <div className="grid grid-cols-3 gap-3">
+            <div>
+              <label className={labelClass}>Rate</label>
+              <input
+                type="number"
+                value={form.rate}
+                onChange={(e) => handleChange('rate', e.target.value)}
+                placeholder="0.00"
+                className={inputClass}
               />
             </div>
-
-            {/* Cancel / Submit */}
-            <div className="flex items-center justify-end gap-3">
-              <button
-                onClick={handleCloseModal}
-                className="text-[#C8102E] text-sm font-bold px-6 py-2 rounded-full border border-[#C8102E] hover:bg-[#C8102E]/5 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleSubmitClaim}
-                className="bg-[#C8102E] text-white text-sm font-bold px-6 py-2 rounded-full hover:brightness-90 transition-all"
-              >
-                Submit Request
-              </button>
+            <div>
+              <label className={labelClass}>Selling Rate</label>
+              <input
+                type="number"
+                value={form.selling_rate}
+                onChange={(e) => handleChange('selling_rate', e.target.value)}
+                placeholder="0.00"
+                className={inputClass}
+              />
             </div>
-
+            <div>
+              <label className={labelClass}>Units</label>
+              <input
+                type="number"
+                value={form.units}
+                onChange={(e) => handleChange('units', e.target.value)}
+                placeholder="0"
+                className={inputClass}
+              />
+            </div>
           </div>
+
+          {/* Reimbursement Amount + Type */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={labelClass}>Reimbursement Amount</label>
+              <input
+                type="number"
+                value={form.reimbursement_amt}
+                readOnly
+                className={`${inputClass} bg-gray-50 text-gray-500`}
+              />
+            </div>
+            <div>
+              <label className={labelClass}>Type</label>
+              <select
+                value={form.claim_type}
+                onChange={(e) => handleChange('claim_type', e.target.value)}
+                className={inputClass}
+              >
+                <option value="">Select type...</option>
+                <option value="sale">Sale</option>
+                <option value="reimbursement">Reimbursement</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Reason */}
+          <div>
+            <label className={labelClass}>Reason</label>
+            <textarea
+              value={form.reason}
+              onChange={(e) => handleChange('reason', e.target.value)}
+              placeholder="Reason for claim..."
+              rows={3}
+              className={inputClass}
+            />
+          </div>
+
+          {error && <p className="text-sm text-red-500">{error}</p>}
+
+          {/* Buttons */}
+          <div className="flex gap-3 mt-2">
+            <button
+              onClick={handleCloseCreate}
+              className="flex-1 py-2 text-sm border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSubmit}
+              disabled={submitting}
+              className="flex-1 py-2 text-sm bg-[#E8400C] text-white rounded-lg hover:bg-[#c93509] transition-colors disabled:opacity-50"
+            >
+              {submitting ? 'Submitting...' : 'Submit Request'}
+            </button>
+          </div>
+
         </div>
-      )}
+      </Modal>
+
+      {/* Claim Details Modal */}
+      <Modal
+        open={detailsModalOpen}
+        title={selectedClaim ? `Claim — ${selectedClaim.claim_id}` : 'Claim Details'}
+        onClose={() => { setDetailsModalOpen(false); setSelectedClaim(null) }}
+      >
+        {selectedClaim && (
+          <div className="flex flex-col gap-4">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <p className="text-xs text-gray-500">Claim ID</p>
+                <p className="text-sm font-medium text-gray-900">{selectedClaim.claim_id}</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500">Status</p>
+                <StatusBadge status={selectedClaim.status} />
+              </div>
+              <div>
+                <p className="text-xs text-gray-500">Claim Type</p>
+                <p className="text-sm font-medium text-gray-900 capitalize">{selectedClaim.claim_type}</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500">Reimbursement Amount</p>
+                <p className="text-sm font-medium text-gray-900">
+                  ₹{selectedClaim.reimbursement_amt.toLocaleString('en-IN')}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+      </Modal>
 
     </AppLayout>
   )
