@@ -155,6 +155,9 @@ export default function AdminDispatch() {
 
     // If delivered, update PO status and distributor inventory
     if (newStatus === 'delivered') {
+      console.log('dispatch:', selectedDispatch)
+console.log('po_no:', selectedDispatch.po_no)
+console.log('distributor_id:', selectedDispatch.distributor_id)
       // Update PO status
       await supabase
         .from('purchase_orders')
