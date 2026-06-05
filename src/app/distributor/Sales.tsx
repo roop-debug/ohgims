@@ -1,9 +1,13 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import AppLayout from '../../components/shared/AppLayout'
 import DataTable from '../../components/shared/DataTable'
 import Modal from '../../components/shared/Modal'
 import type { ColumnDef } from '@tanstack/react-table'
+// --- ADDED ---
+import { supabase } from '../../lib/supabase'
+import { useAuth } from '../../context/AuthContext'
+// --- END ---
 
 interface SalesRow {
   id: string
@@ -15,8 +19,6 @@ interface SalesRow {
   date: string
 }
 
-const data: SalesRow[] = []
-
 const initialForm = {
   sku_id: '',
   units_sold: '',
@@ -26,22 +28,68 @@ const initialForm = {
 
 export default function DistributorSales() {
   const navigate = useNavigate()
-  const [loading] = useState(false)
+  const { profile } = useAuth()
+
+  // --- ADDED data state, SKU list, and fetch ---
+  const [data, setData] = useState<SalesRow[]>([])
+  const [loading, setLoading] = useState(true)
+  const [skuOptions, setSkuOptions] = useState<{ sku_id: string; name: string }[]>([])
   const [modalOpen, setModalOpen] = useState(false)
   const [form, setForm] = useState(initialForm)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  useEffect(() => {
+    if (profile?.distributor_id) {
+      fetchSales()
+      fetchSKUs()
+    }
+  }, [profile])
+
+  async function fetchSales() {
+    const { data, error } = await supabase
+      .from('sales_logs')
+      .select('sales_id, sku_id, units_sold, selling_price, total_revenue, date, skus(name)')
+      .eq('distributor_id', profile?.distributor_id)
+      .order('date', { ascending: false })
+
+    if (!error && data) {
+      setData(data.map((row: any) => ({
+        id: row.sales_id,
+        sku_id: row.sku_id,
+        item_name: row.skus?.name,
+        units_sold: row.units_sold,
+        selling_price: row.selling_price,
+        total_revenue: row.total_revenue,
+        date: row.date,
+      })))
+    }
+    setLoading(false)
+  }
+
+  async function fetchSKUs() {
+    const { data, error } = await supabase
+      .from('distributor_inventory')
+      .select('sku_id, skus(name)')
+      .eq('distributor_id', profile?.distributor_id)
+      .gt('total_stock', 0)
+
+    if (!error && data) {
+      setSkuOptions(data.map((row: any) => ({
+        sku_id: row.sku_id,
+        name: row.skus?.name,
+      })))
+    }
+  }
+  // --- END ---
+
   function handleChange(key: keyof typeof initialForm, value: string) {
     const updated = { ...form, [key]: value }
-
-    // Auto-calc total revenue
     if (key === 'units_sold' || key === 'selling_price') {
       const units = parseInt(key === 'units_sold' ? value : form.units_sold) || 0
       const price = parseFloat(key === 'selling_price' ? value : form.selling_price) || 0
       updated.total_revenue = (units * price).toFixed(2)
     }
-
     setForm(updated)
   }
 
@@ -51,6 +99,7 @@ export default function DistributorSales() {
     setError(null)
   }
 
+  // --- ADDED handleSubmit with Supabase insert ---
   async function handleSubmit() {
     setError(null)
     if (!form.sku_id || !form.units_sold || !form.selling_price) {
@@ -58,10 +107,52 @@ export default function DistributorSales() {
       return
     }
     setSubmitting(true)
-    // TODO: Supabase insert after DB setup
+
+    const unitsSold = parseInt(form.units_sold)
+    const sellingPrice = parseFloat(form.selling_price)
+    const totalRevenue = parseFloat(form.total_revenue)
+
+    // 1. Insert sales log
+    const { error: salesError } = await supabase
+      .from('sales_logs')
+      .insert({
+        distributor_id: profile?.distributor_id,
+        sku_id: form.sku_id,
+        date: new Date().toISOString().split('T')[0],
+        units_sold: unitsSold,
+        selling_price: sellingPrice,
+        total_revenue: totalRevenue,
+      })
+
+    if (salesError) { setError(salesError.message); setSubmitting(false); return }
+
+    // 2. Update distributor inventory — decrease stock
+    const { data: currentInv } = await supabase
+      .from('distributor_inventory')
+      .select('dist_inventory_id, stock_out, total_stock')
+      .eq('distributor_id', profile?.distributor_id)
+      .eq('sku_id', form.sku_id)
+      .single()
+
+    if (currentInv) {
+      const newTotal = currentInv.total_stock - unitsSold
+      await supabase
+        .from('distributor_inventory')
+        .update({
+          stock_out: currentInv.stock_out + unitsSold,
+          total_stock: newTotal,
+          status: newTotal <= 0 ? 'Out of Stock' : newTotal <= 10 ? 'Low Stock' : 'In Stock',
+          date: new Date().toISOString().split('T')[0],
+        })
+        .eq('dist_inventory_id', currentInv.dist_inventory_id)
+    }
+
     setSubmitting(false)
     handleClose()
+    fetchSales()
+    fetchSKUs()
   }
+  // --- END ---
 
   const columns: ColumnDef<SalesRow>[] = [
     { header: 'Sr No.', cell: ({ row }) => row.index + 1 },
@@ -86,27 +177,20 @@ export default function DistributorSales() {
   return (
     <AppLayout>
       <div className="flex flex-col gap-4">
-
-        {/* Header */}
         <div className="flex items-center justify-between">
           <h1 className="text-lg font-semibold text-gray-900">Sales</h1>
           <div className="flex gap-2">
             <button
               onClick={() => navigate('/distributor/claims')}
               className="px-4 py-2 text-sm border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
-            >
-              Create Claim
-            </button>
+            >Create Claim</button>
             <button
               onClick={() => setModalOpen(true)}
               className="w-9 h-9 bg-[#E8400C] text-white rounded-lg hover:bg-[#c93509] transition-colors flex items-center justify-center text-xl"
-            >
-              +
-            </button>
+            >+</button>
           </div>
         </div>
 
-        {/* Table */}
         <DataTable
           columns={columns}
           data={data}
@@ -117,87 +201,61 @@ export default function DistributorSales() {
           todayToggle
           emptyMessage="No sales logged yet"
         />
-
       </div>
 
-      {/* Log Sale Modal */}
-      <Modal
-        open={modalOpen}
-        title="Log Sale"
-        onClose={handleClose}
-      >
+      <Modal open={modalOpen} title="Log Sale" onClose={handleClose}>
         <div className="flex flex-col gap-4">
-
-          {/* SKU */}
           <div>
             <label className={labelClass}>SKU</label>
+            {/* --- ADDED populated SKU dropdown from distributor's in-stock inventory --- */}
             <select
               value={form.sku_id}
               onChange={(e) => handleChange('sku_id', e.target.value)}
               className={inputClass}
             >
               <option value="">Select SKU...</option>
-              {/* populated from Supabase after DB setup */}
+              {skuOptions.map((s) => (
+                <option key={s.sku_id} value={s.sku_id}>{s.name} ({s.sku_id})</option>
+              ))}
             </select>
+            {/* --- END --- */}
           </div>
 
-          {/* Units Sold + Selling Price */}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className={labelClass}>Units Sold</label>
-              <input
-                type="number"
-                value={form.units_sold}
+              <input type="number" value={form.units_sold}
                 onChange={(e) => handleChange('units_sold', e.target.value)}
-                placeholder="0"
-                className={inputClass}
-              />
+                placeholder="0" className={inputClass} />
             </div>
             <div>
               <label className={labelClass}>Selling Price (₹)</label>
-              <input
-                type="number"
-                value={form.selling_price}
+              <input type="number" value={form.selling_price}
                 onChange={(e) => handleChange('selling_price', e.target.value)}
-                placeholder="0.00"
-                className={inputClass}
-              />
+                placeholder="0.00" className={inputClass} />
             </div>
           </div>
 
-          {/* Total Revenue — auto calculated */}
           <div>
             <label className={labelClass}>Total Revenue</label>
-            <input
-              type="number"
-              value={form.total_revenue}
-              readOnly
-              className={`${inputClass} bg-gray-50 text-gray-500`}
-            />
+            <input type="number" value={form.total_revenue} readOnly
+              className={`${inputClass} bg-gray-50 text-gray-500`} />
           </div>
 
           {error && <p className="text-sm text-red-500">{error}</p>}
 
-          {/* Buttons */}
           <div className="flex gap-3 mt-2">
-            <button
-              onClick={handleClose}
-              className="flex-1 py-2 text-sm border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
-            >
+            <button onClick={handleClose}
+              className="flex-1 py-2 text-sm border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
               Cancel
             </button>
-            <button
-              onClick={handleSubmit}
-              disabled={submitting}
-              className="flex-1 py-2 text-sm bg-[#E8400C] text-white rounded-lg hover:bg-[#c93509] transition-colors disabled:opacity-50"
-            >
+            <button onClick={handleSubmit} disabled={submitting}
+              className="flex-1 py-2 text-sm bg-[#E8400C] text-white rounded-lg hover:bg-[#c93509] transition-colors disabled:opacity-50">
               {submitting ? 'Saving...' : 'Log Sale'}
             </button>
           </div>
-
         </div>
       </Modal>
-
     </AppLayout>
   )
 }

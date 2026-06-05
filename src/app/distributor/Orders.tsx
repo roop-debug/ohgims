@@ -1,10 +1,14 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import AppLayout from '../../components/shared/AppLayout'
 import DataTable from '../../components/shared/DataTable'
 import Modal from '../../components/shared/Modal'
 import StatusBadge from '../../components/shared/StatusBadge'
 import type { ColumnDef } from '@tanstack/react-table'
+// --- ADDED ---
+import { supabase } from '../../lib/supabase'
+import { useAuth } from '../../context/AuthContext'
+// --- END ---
 
 interface OrderRow {
   id: string
@@ -24,24 +28,71 @@ interface OrderItem {
   price: number
 }
 
-const data: OrderRow[] = []
-
 export default function DistributorOrders() {
-  const [loading] = useState(false)
-  const [selectedOrder, setSelectedOrder] = useState<OrderRow | null>(null)
-  const [orderItems] = useState<OrderItem[]>([])
-  const [modalOpen, setModalOpen] = useState(false)
+  const { profile } = useAuth()
   const navigate = useNavigate()
 
-  function handleRowClick(row: OrderRow) {
+  // --- ADDED data state and fetch ---
+  const [data, setData] = useState<OrderRow[]>([])
+  const [loading, setLoading] = useState(true)
+  const [selectedOrder, setSelectedOrder] = useState<OrderRow | null>(null)
+  const [orderItems, setOrderItems] = useState<OrderItem[]>([])
+  const [modalOpen, setModalOpen] = useState(false)
+
+  useEffect(() => {
+    if (profile?.distributor_id) fetchOrders()
+  }, [profile])
+
+  async function fetchOrders() {
+    const { data, error } = await supabase
+      .from('purchase_orders')
+      .select('po_id, created_at, status, eta')
+      .eq('distributor_id', profile?.distributor_id)
+      .order('created_at', { ascending: false })
+
+    if (!error && data) {
+      setData(data.map((row: any) => ({
+        id: row.po_id,
+        po_no: row.po_id,
+        created_at: row.created_at,
+        status: row.status,
+        eta: row.eta,
+      })))
+    }
+    setLoading(false)
+  }
+
+  async function fetchOrderItems(poId: string) {
+    const { data, error } = await supabase
+      .from('po_line_items')
+      .select('line_id, sku_id, item_name, quantity, rate, gst, price')
+      .eq('po_id', poId)
+
+    if (!error && data) {
+      setOrderItems(data.map((row: any) => ({
+        id: row.line_id,
+        sku: row.sku_id,
+        item_name: row.item_name,
+        quantity: row.quantity,
+        rate: row.rate,
+        gst: row.gst,
+        price: row.price,
+      })))
+    }
+  }
+
+  async function handleRowClick(row: OrderRow) {
     setSelectedOrder(row)
+    await fetchOrderItems(row.id)
     setModalOpen(true)
   }
 
   function handleClose() {
     setModalOpen(false)
     setSelectedOrder(null)
+    setOrderItems([])
   }
+  // --- END ---
 
   const columns: ColumnDef<OrderRow>[] = [
     { header: 'Sr No.', cell: ({ row }) => row.index + 1 },
@@ -88,8 +139,6 @@ export default function DistributorOrders() {
   return (
     <AppLayout>
       <div className="flex flex-col gap-4">
-
-        {/* Header */}
         <div className="flex items-center justify-between">
           <h1 className="text-lg font-semibold text-gray-900">Orders Overview</h1>
           <button
@@ -100,7 +149,6 @@ export default function DistributorOrders() {
           </button>
         </div>
 
-        {/* Table */}
         <DataTable
           columns={columns}
           data={data}
@@ -113,16 +161,13 @@ export default function DistributorOrders() {
           emptyMessage="No orders found"
         />
 
-        {/* Export to sheets */}
         <div className="flex justify-end">
           <button className="px-4 py-2 text-sm border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
             Export to sheets
           </button>
         </div>
-
       </div>
 
-      {/* Order Details Modal */}
       <Modal
         open={modalOpen}
         title={selectedOrder ? `Order — ${selectedOrder.po_no}` : 'Order Details'}
@@ -130,7 +175,6 @@ export default function DistributorOrders() {
       >
         {selectedOrder && (
           <div className="flex flex-col gap-4">
-
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <p className="text-xs text-gray-500">PO No.</p>
@@ -157,9 +201,7 @@ export default function DistributorOrders() {
             <hr className="border-gray-100" />
 
             <div>
-              <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">
-                Line Items
-              </p>
+              <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">Line Items</p>
               <DataTable
                 columns={itemColumns}
                 data={orderItems}
@@ -167,11 +209,9 @@ export default function DistributorOrders() {
                 emptyMessage="No items in this order"
               />
             </div>
-
           </div>
         )}
       </Modal>
-
     </AppLayout>
   )
 }
