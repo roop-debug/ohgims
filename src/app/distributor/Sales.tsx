@@ -1,348 +1,202 @@
-// src/app/distributor/Sales.tsx
-
-import { useState, useMemo } from 'react'
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import AppLayout from '../../components/shared/AppLayout'
+import DataTable from '../../components/shared/DataTable'
+import Modal from '../../components/shared/Modal'
+import type { ColumnDef } from '@tanstack/react-table'
 
-// ── Types ─────────────────────────────────────────────────────────────────────
 interface SalesRow {
-  sr: number
-  items: string
-  sku: string
-  unitsSold: number
-  sellingPrice: number
-  totalRevenue: number
+  id: string
+  sku_id: string
+  item_name: string
+  units_sold: number
+  selling_price: number
+  total_revenue: number
+  date: string
 }
 
-interface SalesFormLine {
-  id: number
-  skuId: string
-  skuName: string
-  quantity: number
-  sellingPrice: number
-  revenue: number
-}
-// ─────────────────────────────────────────────────────────────────────────────
+const data: SalesRow[] = []
 
-// TODO: replace with Supabase query filtered by auth().distributor_id
-// const MOCK_SALES: SalesRow[] = [
-//   { sr: 1, items: 'Product A', sku: 'SKU-001', unitsSold: 20, sellingPrice: 95,  totalRevenue: 1900 },
-//   { sr: 2, items: 'Product B', sku: 'SKU-002', unitsSold: 10, sellingPrice: 180, totalRevenue: 1800 },
-// ]
-
-// TODO: replace with Supabase query to fetch distributor's inventory SKUs
-// const MOCK_SKUS = [
-//   { id: 'sku-1', name: 'Product A' },
-//   { id: 'sku-2', name: 'Product B' },
-// ]
-
-let lineIdCounter = 0
-
-function makeEmptyLine(): SalesFormLine {
-  return {
-    id:           ++lineIdCounter,
-    skuId:        '',
-    skuName:      '',
-    quantity:     0,
-    sellingPrice: 0,
-    revenue:      0,
-  }
+const initialForm = {
+  sku_id: '',
+  units_sold: '',
+  selling_price: '',
+  total_revenue: '',
 }
 
 export default function DistributorSales() {
   const navigate = useNavigate()
+  const [loading] = useState(false)
+  const [modalOpen, setModalOpen] = useState(false)
+  const [form, setForm] = useState(initialForm)
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
-  const [searchQuery, setSearchQuery] = useState('')
-  const [showModal, setShowModal]     = useState(false)
-  const [lines, setLines]             = useState<SalesFormLine[]>([makeEmptyLine()])
+  function handleChange(key: keyof typeof initialForm, value: string) {
+    const updated = { ...form, [key]: value }
 
-  // TODO: replace with Supabase query filtered by auth().distributor_id
-  const [sales] = useState<SalesRow[]>([])
+    // Auto-calc total revenue
+    if (key === 'units_sold' || key === 'selling_price') {
+      const units = parseInt(key === 'units_sold' ? value : form.units_sold) || 0
+      const price = parseFloat(key === 'selling_price' ? value : form.selling_price) || 0
+      updated.total_revenue = (units * price).toFixed(2)
+    }
 
-  // TODO: replace with Supabase query to fetch distributor's inventory SKUs
-  const [skus] = useState<{ id: string; name: string }[]>([])
-
-  const filteredSales = useMemo(() => {
-    const q = searchQuery.toLowerCase()
-    if (!q) return sales
-    return sales.filter(
-      (s) =>
-        s.items.toLowerCase().includes(q) ||
-        s.sku.toLowerCase().includes(q)
-    )
-  }, [sales, searchQuery])
-
-  const totalRevenue = useMemo(
-    () => lines.reduce((sum, l) => sum + l.revenue, 0),
-    [lines]
-  )
-
-  function handleOpenModal() {
-    setLines([makeEmptyLine()])
-    setShowModal(true)
+    setForm(updated)
   }
 
-  function handleCloseModal() {
-    setShowModal(false)
+  function handleClose() {
+    setModalOpen(false)
+    setForm(initialForm)
+    setError(null)
   }
 
-  function handleAddLine() {
-    setLines((prev) => [...prev, makeEmptyLine()])
+  async function handleSubmit() {
+    setError(null)
+    if (!form.sku_id || !form.units_sold || !form.selling_price) {
+      setError('Please fill all required fields')
+      return
+    }
+    setSubmitting(true)
+    // TODO: Supabase insert after DB setup
+    setSubmitting(false)
+    handleClose()
   }
 
-  function handleRemoveLine(id: number) {
-    setLines((prev) => prev.filter((l) => l.id !== id))
-  }
+  const columns: ColumnDef<SalesRow>[] = [
+    { header: 'Sr No.', cell: ({ row }) => row.index + 1 },
+    { header: 'Items', accessorKey: 'item_name' },
+    { header: "SKU's", accessorKey: 'sku_id' },
+    { header: 'Units Sold', accessorKey: 'units_sold' },
+    {
+      header: 'Selling Price',
+      accessorKey: 'selling_price',
+      cell: ({ getValue }) => `₹${(getValue() as number).toLocaleString('en-IN')}`,
+    },
+    {
+      header: 'Total Revenue',
+      accessorKey: 'total_revenue',
+      cell: ({ getValue }) => `₹${(getValue() as number).toLocaleString('en-IN')}`,
+    },
+  ]
 
-  function handleLineSkuChange(id: number, skuId: string) {
-    const selected = skus.find((s) => s.id === skuId)
-    setLines((prev) =>
-      prev.map((l) =>
-        l.id === id
-          ? { ...l, skuId, skuName: selected?.name ?? '' }
-          : l
-      )
-    )
-  }
-
-  function handleLineQuantityChange(id: number, value: string) {
-    const quantity = Math.max(0, parseInt(value) || 0)
-    setLines((prev) =>
-      prev.map((l) =>
-        l.id === id
-          ? { ...l, quantity, revenue: quantity * l.sellingPrice }
-          : l
-      )
-    )
-  }
-
-  function handleLineSellingPriceChange(id: number, value: string) {
-    const sellingPrice = Math.max(0, parseFloat(value) || 0)
-    setLines((prev) =>
-      prev.map((l) =>
-        l.id === id
-          ? { ...l, sellingPrice, revenue: l.quantity * sellingPrice }
-          : l
-      )
-    )
-  }
-
-  async function handleSubmitSales() {
-    const validLines = lines.filter((l) => l.skuId && l.quantity > 0)
-    if (validLines.length === 0) return
-    // TODO: Supabase insert into sales for each validLine with auth().distributor_id
-    // TODO: Supabase update distributor_inventory — deduct quantity for each SKU
-    // TODO: refetch sales after insert
-    handleCloseModal()
-  }
+  const inputClass = 'w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#E8400C]'
+  const labelClass = 'block text-sm font-medium text-gray-700 mb-1'
 
   return (
     <AppLayout>
       <div className="flex flex-col gap-4">
 
-        {/* ── Top buttons ── */}
-        <div className="flex justify-end">
-          <button
-            onClick={() => navigate('/distributor/claims')}
-            className="flex items-center gap-1.5 bg-[#FEFDE8] text-[#C8102E] text-sm font-bold px-4 py-2 rounded-full border border-[#C8102E] hover:brightness-95 transition-all"
-          >
-            <span className="text-base leading-none">⊕</span>
-            Create Claim
-          </button>
-        </div>
-
-        {/* ── Sales card ── */}
-        <div className="rounded-2xl overflow-hidden border border-[#C8102E]">
-
-          {/* Red header */}
-          <div className="bg-[#C8102E] px-5 pt-4 pb-3 flex items-start justify-between">
-            <div className="flex flex-col gap-3 flex-1">
-              <h1 className="text-white text-sm font-bold uppercase tracking-wider">
-                Sales
-              </h1>
-              <div className="flex items-center gap-3">
-                <input
-                  type="text"
-                  placeholder=""
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-48 rounded-full bg-white/90 text-gray-600 text-sm px-4 py-1.5 outline-none placeholder:text-gray-400"
-                />
-                {/* TODO: open filter panel/drawer on click */}
-                <button className="text-white text-sm font-semibold hover:opacity-75 transition-opacity">
-                  Filters
-                </button>
-              </div>
-            </div>
-            {/* Manage button */}
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <h1 className="text-lg font-semibold text-gray-900">Sales</h1>
+          <div className="flex gap-2">
             <button
-              onClick={handleOpenModal}
-              className="bg-[#FEFDE8] text-[#C8102E] text-sm font-bold px-5 py-2 rounded-full hover:brightness-95 transition-all"
+              onClick={() => navigate('/distributor/claims')}
+              className="px-4 py-2 text-sm border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
             >
-              Manage
+              Create Claim
+            </button>
+            <button
+              onClick={() => setModalOpen(true)}
+              className="w-9 h-9 bg-[#E8400C] text-white rounded-lg hover:bg-[#c93509] transition-colors flex items-center justify-center text-xl"
+            >
+              +
             </button>
           </div>
-
-          {/* Column headers */}
-          <div className="grid grid-cols-[60px_1fr_1fr_1fr_1fr_1fr] bg-[#FEFDE8] border-b border-[#E0DDB0] px-4 py-2">
-            <span className="text-[#C8102E] text-xs font-bold">Sr No.</span>
-            <span className="text-[#C8102E] text-xs font-bold">Items</span>
-            <span className="text-[#C8102E] text-xs font-bold">SKU's</span>
-            <span className="text-[#C8102E] text-xs font-bold">Units sold</span>
-            <span className="text-[#C8102E] text-xs font-bold">Selling Price</span>
-            <span className="text-[#C8102E] text-xs font-bold">Total Revenue</span>
-          </div>
-
-          {/* Rows */}
-          <div className="bg-[#FEFDE8] min-h-[400px]">
-            {filteredSales.length === 0 ? (
-              <p className="text-center text-sm text-gray-400 py-16">
-                No sales recorded.
-              </p>
-            ) : (
-              filteredSales.map((row) => (
-                <div
-                  key={row.sr}
-                  className="grid grid-cols-[60px_1fr_1fr_1fr_1fr_1fr] px-4 py-3 border-b border-[#E0DDB0]"
-                >
-                  <span className="text-sm text-gray-800">{row.sr}</span>
-                  <span className="text-sm text-gray-800">{row.items}</span>
-                  <span className="text-sm text-gray-800">{row.sku}</span>
-                  <span className="text-sm text-gray-800">{row.unitsSold}</span>
-                  <span className="text-sm text-gray-800">₹{row.sellingPrice}</span>
-                  <span className="text-sm text-gray-800">₹{row.totalRevenue.toLocaleString()}</span>
-                </div>
-              ))
-            )}
-          </div>
-
         </div>
+
+        {/* Table */}
+        <DataTable
+          columns={columns}
+          data={data}
+          loading={loading}
+          searchable
+          exportable
+          exportFilename="sales"
+          todayToggle
+          emptyMessage="No sales logged yet"
+        />
 
       </div>
 
-      {/* ── Log Sales Modal ── */}
-      {showModal && (
-        <div
-          className="fixed inset-0 z-40 bg-black/50 flex items-center justify-center p-4"
-          onClick={handleCloseModal}
-        >
-          <div
-            className="w-full max-w-2xl bg-[#FEFDE8] rounded-2xl p-6 flex flex-col gap-5 max-h-[90vh] overflow-y-auto"
-            onClick={(e) => e.stopPropagation()}
-          >
+      {/* Log Sale Modal */}
+      <Modal
+        open={modalOpen}
+        title="Log Sale"
+        onClose={handleClose}
+      >
+        <div className="flex flex-col gap-4">
 
-            {/* Modal header */}
-            <div className="flex items-center justify-between">
-              <h2 className="text-[#C8102E] text-sm font-bold uppercase tracking-wider">
-                Log Sales
-              </h2>
-              <button
-                onClick={handleCloseModal}
-                className="text-[#C8102E] text-lg font-bold hover:opacity-75 transition-opacity"
-              >
-                X
-              </button>
-            </div>
-
-            {/* Column headers */}
-            <div className="grid grid-cols-[2fr_1fr_1fr_1fr_32px] gap-2">
-              <span className="text-[#C8102E] text-xs font-bold">SKU</span>
-              <span className="text-[#C8102E] text-xs font-bold">Quantity</span>
-              <span className="text-[#C8102E] text-xs font-bold">Selling Price</span>
-              <span className="text-[#C8102E] text-xs font-bold">Revenue</span>
-              <span />
-            </div>
-
-            {/* Lines */}
-            {lines.map((line) => (
-              <div key={line.id} className="grid grid-cols-[2fr_1fr_1fr_1fr_32px] gap-2 items-center">
-                {/* SKU selector */}
-                <select
-                  value={line.skuId}
-                  onChange={(e) => handleLineSkuChange(line.id, e.target.value)}
-                  className="bg-white border border-[#E0DDB0] rounded-lg px-3 py-2 text-sm text-gray-800 outline-none focus:border-[#C8102E] transition-colors"
-                >
-                  {/* TODO: populate from Supabase SKUs */}
-                  <option value="">Select SKU</option>
-                  {skus.map((s) => (
-                    <option key={s.id} value={s.id}>{s.name}</option>
-                  ))}
-                </select>
-
-                {/* Quantity */}
-                <input
-                  type="number"
-                  min={0}
-                  value={line.quantity || ''}
-                  placeholder="0"
-                  onChange={(e) => handleLineQuantityChange(line.id, e.target.value)}
-                  className="bg-white border border-[#E0DDB0] rounded-lg px-3 py-2 text-sm text-gray-800 outline-none focus:border-[#C8102E] transition-colors"
-                />
-
-                {/* Selling Price */}
-                <input
-                  type="number"
-                  min={0}
-                  value={line.sellingPrice || ''}
-                  placeholder="₹0"
-                  onChange={(e) => handleLineSellingPriceChange(line.id, e.target.value)}
-                  className="bg-white border border-[#E0DDB0] rounded-lg px-3 py-2 text-sm text-gray-800 outline-none focus:border-[#C8102E] transition-colors"
-                />
-
-                {/* Auto-calculated revenue */}
-                <input
-                  type="text"
-                  value={line.revenue ? `₹${line.revenue.toLocaleString()}` : ''}
-                  readOnly
-                  placeholder="₹0"
-                  className="bg-gray-100 border border-[#E0DDB0] rounded-lg px-3 py-2 text-sm text-gray-500 outline-none"
-                />
-
-                {/* Remove line */}
-                <button
-                  onClick={() => handleRemoveLine(line.id)}
-                  className="text-[#C8102E] text-lg font-bold hover:opacity-75 transition-opacity text-center"
-                >
-                  −
-                </button>
-              </div>
-            ))}
-
-            {/* Add line */}
-            <button
-              onClick={handleAddLine}
-              className="flex items-center gap-1.5 text-[#C8102E] text-sm font-bold hover:opacity-75 transition-opacity self-start"
+          {/* SKU */}
+          <div>
+            <label className={labelClass}>SKU</label>
+            <select
+              value={form.sku_id}
+              onChange={(e) => handleChange('sku_id', e.target.value)}
+              className={inputClass}
             >
-              <span className="text-base leading-none">⊕</span>
-              Add SKU
-            </button>
-
-            {/* Total revenue */}
-            <div className="flex justify-end border-t border-[#E0DDB0] pt-3">
-              <span className="text-[#C8102E] text-sm font-bold">
-                Total Revenue: ₹{totalRevenue.toLocaleString()}
-              </span>
-            </div>
-
-            {/* Cancel / Submit */}
-            <div className="flex items-center justify-end gap-3">
-              <button
-                onClick={handleCloseModal}
-                className="text-[#C8102E] text-sm font-bold px-6 py-2 rounded-full border border-[#C8102E] hover:bg-[#C8102E]/5 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleSubmitSales}
-                className="bg-[#C8102E] text-white text-sm font-bold px-6 py-2 rounded-full hover:brightness-90 transition-all"
-              >
-                Submit
-              </button>
-            </div>
-
+              <option value="">Select SKU...</option>
+              {/* populated from Supabase after DB setup */}
+            </select>
           </div>
+
+          {/* Units Sold + Selling Price */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={labelClass}>Units Sold</label>
+              <input
+                type="number"
+                value={form.units_sold}
+                onChange={(e) => handleChange('units_sold', e.target.value)}
+                placeholder="0"
+                className={inputClass}
+              />
+            </div>
+            <div>
+              <label className={labelClass}>Selling Price (₹)</label>
+              <input
+                type="number"
+                value={form.selling_price}
+                onChange={(e) => handleChange('selling_price', e.target.value)}
+                placeholder="0.00"
+                className={inputClass}
+              />
+            </div>
+          </div>
+
+          {/* Total Revenue — auto calculated */}
+          <div>
+            <label className={labelClass}>Total Revenue</label>
+            <input
+              type="number"
+              value={form.total_revenue}
+              readOnly
+              className={`${inputClass} bg-gray-50 text-gray-500`}
+            />
+          </div>
+
+          {error && <p className="text-sm text-red-500">{error}</p>}
+
+          {/* Buttons */}
+          <div className="flex gap-3 mt-2">
+            <button
+              onClick={handleClose}
+              className="flex-1 py-2 text-sm border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSubmit}
+              disabled={submitting}
+              className="flex-1 py-2 text-sm bg-[#E8400C] text-white rounded-lg hover:bg-[#c93509] transition-colors disabled:opacity-50"
+            >
+              {submitting ? 'Saving...' : 'Log Sale'}
+            </button>
+          </div>
+
         </div>
-      )}
+      </Modal>
 
     </AppLayout>
   )
