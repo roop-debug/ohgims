@@ -30,17 +30,17 @@ Deno.serve(async (req) => {
     }
 
     // Admin client — service role, bypasses RLS
-    const supabaseAdmin = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-    )
+   const supabaseAdmin = createClient(
+  Deno.env.get('SUPABASE_URL')!,
+  JSON.parse(Deno.env.get('SUPABASE_SECRET_KEYS')!).service_role_key
+)
 
     // Verify the caller is actually an admin
     const anonClient = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_ANON_KEY')!,
-      { global: { headers: { Authorization: authHeader } } }
-    )
+  Deno.env.get('SUPABASE_URL')!,
+  JSON.parse(Deno.env.get('SUPABASE_PUBLISHABLE_KEYS')!).anon_key,
+  { global: { headers: { Authorization: authHeader } } }
+)
     const { data: { user } } = await anonClient.auth.getUser()
     if (!user) {
       return new Response(JSON.stringify({ error: 'Unauthorized' }), {
