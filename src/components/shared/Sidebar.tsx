@@ -25,18 +25,20 @@ const distributorNavItems: NavItem[] = [
 ]
 
 interface SidebarProps {
-  onNavigate?: () => void // called on mobile to close drawer
+  onNavigate?: () => void
 }
 
 export default function Sidebar({ onNavigate }: SidebarProps) {
-  const { isAdmin } = useAuth()
+  const { isAdmin, profile } = useAuth()
   const navigate = useNavigate()
   const navItems = isAdmin ? adminNavItems : distributorNavItems
 
+  // --- UPDATED handleLogout to use window.location for clean redirect ---
   async function handleLogout() {
     await supabase.auth.signOut()
-    navigate('/login')
+    window.location.href = '/login'
   }
+  // --- END ---
 
   return (
     <div className="flex flex-col h-full w-full bg-white border-r border-gray-200">
@@ -68,8 +70,16 @@ export default function Sidebar({ onNavigate }: SidebarProps) {
         ))}
       </nav>
 
-      {/* Logout */}
-      <div className="px-3 py-4 border-t border-gray-100">
+      {/* --- UPDATED bottom section with user info + sign out --- */}
+      <div className="px-3 py-4 border-t border-gray-100 flex flex-col gap-1">
+        <div className="px-3 py-2">
+          <p className="text-xs font-medium text-gray-900 truncate">
+            {profile?.email ?? '—'}
+          </p>
+          <p className="text-xs text-gray-400 capitalize">
+            {profile?.role ?? '—'}
+          </p>
+        </div>
         <button
           onClick={handleLogout}
           className="w-full px-3 py-2 text-sm text-left text-gray-500 hover:bg-gray-50 hover:text-gray-900 rounded-lg transition-colors"
@@ -77,6 +87,7 @@ export default function Sidebar({ onNavigate }: SidebarProps) {
           Sign out
         </button>
       </div>
+      {/* --- END --- */}
 
     </div>
   )
