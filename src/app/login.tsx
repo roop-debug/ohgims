@@ -2,46 +2,61 @@ import { useState } from 'react'
 import { supabase } from '../lib/supabase'
 
 export default function Login() {
-  const [email, setEmail] = useState('')
+  const [identifier, setIdentifier] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
 
- /* async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
+  async function handleLogin() {
     setLoading(true)
     setError(null)
 
-    const { error } = await supabase.auth.signInWithPassword({ email, password })
+    let emailToUse = identifier.trim()
 
-    if (error) {
-      setError(error.message)
-      setLoading(false)
+    // If it looks like a phone number, look up email from distributors
+    const isPhone = /^[0-9+\s\-()]{7,15}$/.test(emailToUse)
+    if (isPhone) {
+      const { data } = await supabase
+        .from('distributors')
+        .select('poc_email')
+        .eq('poc_contact', emailToUse)
+        .maybeSingle()
+
+      if (!data) {
+        setError('No account found with this phone number')
+        setLoading(false)
+        return
+      }
+      emailToUse = data.poc_email
     }
-    // if success, AuthContext detects the session change
-    // and RootRedirect automatically sends them to their dashboard
+
+    const { error } = await supabase.auth.signInWithPassword({
+      email: emailToUse,
+      password,
+    })
+
+    if (error) { setError(error.message); setLoading(false) }
+    else { window.location.href = '/' }
   }
-*/
+
   return (
     <div className="min-h-screen w-full flex items-center justify-center bg-gray-100">
       <div className="bg-white p-8 rounded-xl shadow-sm w-full max-w-sm">
 
-        {/* Logo */}
         <div className="mb-8 text-center">
-          <h1 className="text-3xl font-bold text-red-500">Oh!G</h1>
+          <h1 className="text-3xl font-bold text-[#E8400C]">Oh!G</h1>
           <p className="text-sm text-gray-500 mt-1">Inventory Management System</p>
         </div>
 
-        {/* Form */}
         <div className="flex flex-col gap-4">
           <div>
-            <label className="text-sm font-medium text-gray-700">Email</label>
+            <label className="text-sm font-medium text-gray-700">Email or Phone</label>
             <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              type="text"
+              value={identifier}
+              onChange={(e) => setIdentifier(e.target.value)}
               className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#E8400C]"
-              placeholder="you@example.com"
+              placeholder="you@example.com or 9876543210"
             />
           </div>
 
@@ -56,30 +71,16 @@ export default function Login() {
             />
           </div>
 
-          {/* Error message */}
-          {error && (
-            <p className="text-sm text-red-500">{error}</p>
-          )}
+          {error && <p className="text-sm text-red-500">{error}</p>}
 
-          {/* Submit button */}
           <button
-  type="button"
-  onClick={async () => {
-  setLoading(true)
-  setError(null)
-  const { error } = await supabase.auth.signInWithPassword({ email, password })
-  if (error) {
-    setError(error.message)
-    setLoading(false)
-  } else {
-    window.location.href = '/admin'
-  }
-}}
-  disabled={loading}
-  className="w-full bg-[#E8400C] text-white py-2 rounded-lg text-sm font-medium hover:bg-[#c93509] transition-colors disabled:opacity-50"
->
-  {loading ? 'Signing in...' : 'Sign in'}
-</button>
+            type="button"
+            onClick={handleLogin}
+            disabled={loading}
+            className="w-full bg-[#E8400C] text-white py-2 rounded-lg text-sm font-medium hover:bg-[#c93509] transition-colors disabled:opacity-50"
+          >
+            {loading ? 'Signing in...' : 'Sign in'}
+          </button>
         </div>
 
       </div>
