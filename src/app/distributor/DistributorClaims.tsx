@@ -21,7 +21,7 @@ const initialForm = {
   selling_rate: '',
   units: '',
   reimbursement_amt: '',
-  claim_type: '' as 'Price Difference' | 'Damage' | 'Expiry' | 'Other' | '',
+  claim_type: '' as 'Offer' | 'Price Difference' | 'Damage' | 'Expiry' | 'Other' | '',
   reason: '',
 }
 
@@ -68,44 +68,34 @@ export default function DistributorClaims() {
   }
 
   async function fetchSKUs() {
-    const { data, error } = await supabase
-      .from('skus')
-      // --- UPDATED to fetch selling_price ---
-      .select('sku_id, name, selling_price')
-      // --- END ---
-      .eq('status', 'Active')
+  const { data, error } = await supabase
+    .from('skus')
+    .select('sku_id, name, selling_price')
+    .eq('status', 'Active')
 
-    if (!error && data) {
-      setSkuOptions(data.map((row: any) => ({
-        sku_id: row.sku_id,
-        name: row.name,
-        // --- ADDED ---
-        selling_price: row.selling_price ?? 0,
-        // --- END ---
-      })))
-    }
+  if (!error && data) {
+    setSkuOptions(data.map((row: any) => ({
+      sku_id: row.sku_id,
+      name: row.name,
+      selling_price: row.selling_price ?? 0,
+    })))
   }
+}
 
   // --- ADDED handler for SKU selection that auto-populates selling rate ---
   function handleSKUChange(skuId: string) {
-    const sku = skuOptions.find(s => s.sku_id === skuId)
-    setForm(prev => {
-      const updated = {
-        ...prev,
-        sku_id: skuId,
-        selling_rate: sku ? sku.selling_price.toString() : '',
-      }
-      // Recalculate reimbursement
-      const rate = parseFloat(updated.rate) || 0
-      const sellingRate = parseFloat(updated.selling_rate) || 0
-      const units = parseInt(updated.units) || 0
-      if (rate > 0 || sellingRate > 0 || units > 0) {
-        const reimbursement = (rate - sellingRate) * units
-        updated.reimbursement_amt = reimbursement > 0 ? reimbursement.toFixed(2) : '0'
-      }
-      return updated
-    })
-  }
+  const sku = skuOptions.find(s => s.sku_id === skuId)
+  setForm(prev => {
+    const updated = {
+      ...prev,
+      sku_id: skuId,
+      rate: sku ? sku.selling_price.toString() : '', // auto-fill rate
+      selling_rate: '', // distributor fills this manually
+    }
+    updated.reimbursement_amt = '0'
+    return updated
+  })
+}
   // --- END ---
 
   function handleChange(key: keyof typeof initialForm, value: string) {
@@ -276,7 +266,9 @@ export default function DistributorClaims() {
                 <option value="Price Difference">Price Difference</option>
                 <option value="Damage">Damage</option>
                 <option value="Expiry">Expiry</option>
+                <option value = "Offer">Offer</option>
                 <option value="Other">Other</option>
+
               </select>
             </div>
           </div>

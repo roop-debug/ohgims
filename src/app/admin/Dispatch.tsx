@@ -91,10 +91,12 @@ export default function AdminDispatch() {
             .from('master_inventory')
             .select('inventory_id, stock_out, total_stock')
             .eq('sku_id', item.sku_id)
+            .order('date', { ascending: false })
+            .limit(1)
             .maybeSingle()
 
           if (currentInv) {
-            const newTotal = currentInv.total_stock - item.quantity
+            const newTotal = Math.max(0, currentInv.total_stock - item.quantity)
             await supabase
               .from('master_inventory')
               .update({
@@ -127,6 +129,8 @@ export default function AdminDispatch() {
             .select('dist_inventory_id, stock_in, total_stock')
             .eq('distributor_id', selectedDispatch.distributor_id)
             .eq('sku_id', item.sku_id)
+            .order('date', { ascending: false })
+            .limit(1)
             .maybeSingle()
 
           if (currentInv) {
@@ -158,13 +162,11 @@ export default function AdminDispatch() {
     setStatusModalOpen(true)
   }
 
-  // --- ADDED helper to get allowed next statuses ---
   function getAllowedStatuses(current: DispatchRow['status']): DispatchRow['status'][] {
     if (current === 'pending') return ['pending', 'in_transit', 'delivered']
     if (current === 'in_transit') return ['in_transit', 'delivered']
-    return [] // delivered — no changes allowed
+    return []
   }
-  // --- END ---
 
   const columns: ColumnDef<DispatchRow>[] = [
     { header: 'No', cell: ({ row }) => row.index + 1 },
@@ -180,7 +182,6 @@ export default function AdminDispatch() {
     {
       header: 'Action',
       cell: ({ row }) => {
-        // --- UPDATED to hide Manage button for delivered dispatches ---
         if (row.original.status === 'delivered') return null
         return (
           <button
@@ -190,7 +191,6 @@ export default function AdminDispatch() {
             Manage
           </button>
         )
-        // --- END ---
       },
     },
   ]
@@ -219,7 +219,6 @@ export default function AdminDispatch() {
         <div className="flex flex-col gap-4">
           <p className="text-sm text-gray-500">Select the new status for this dispatch:</p>
           <div className="flex flex-col gap-2">
-            {/* --- UPDATED to only show allowed statuses based on current status --- */}
             {selectedDispatch && getAllowedStatuses(selectedDispatch.status).map((status) => (
               <button
                 key={status}
@@ -234,7 +233,6 @@ export default function AdminDispatch() {
                 <span className="capitalize">{status.replace('_', ' ')}</span>
               </button>
             ))}
-            {/* --- END --- */}
           </div>
 
           {newStatus === 'in_transit' && (
