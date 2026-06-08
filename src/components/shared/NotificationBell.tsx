@@ -9,14 +9,12 @@ export default function NotificationBell() {
   const [open, setOpen] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
 
-  const unreadCount = notifications.filter((n) => !n.is_read).length
+  const unreadCount = notifications.filter((n) => !n.read).length
 
-  // Fetch notifications on mount
   useEffect(() => {
     if (!user) return
     fetchNotifications()
 
-    // Realtime subscription — new notifications appear instantly
     const channel = supabase
       .channel('notifications')
       .on(
@@ -36,7 +34,6 @@ export default function NotificationBell() {
     return () => { supabase.removeChannel(channel) }
   }, [user])
 
-  // Close dropdown on outside click
   useEffect(() => {
     function handleClick(e: MouseEvent) {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
@@ -61,16 +58,15 @@ export default function NotificationBell() {
   async function handleOpen() {
     setOpen((v) => !v)
 
-    // Mark all as read when opening
     if (!open && unreadCount > 0) {
       await supabase
         .from('notifications')
-        .update({ is_read: true })
+        .update({ read: true })
         .eq('user_id', user!.id)
-        .eq('is_read', false)
+        .eq('read', false)
 
       setNotifications((prev) =>
-        prev.map((n) => ({ ...n, is_read: true }))
+        prev.map((n) => ({ ...n, read: true }))
       )
     }
   }
@@ -117,15 +113,15 @@ export default function NotificationBell() {
             ) : (
               notifications.map((n) => (
                 <div
-                  key={n.id}
-                  className={`px-4 py-3 flex gap-3 ${!n.is_read ? 'bg-orange-50' : ''}`}
+                  key={n.notification_id}
+                  className={`px-4 py-3 flex gap-3 ${!n.read ? 'bg-red-50' : ''}`}
                 >
                   <div className="flex-1">
                     <p className="text-sm font-medium text-gray-900">{n.title}</p>
-                    <p className="text-xs text-gray-500 mt-0.5">{n.body}</p>
+                    <p className="text-xs text-gray-500 mt-0.5">{n.message}</p>
                     <p className="text-xs text-gray-400 mt-1">{timeAgo(n.created_at)}</p>
                   </div>
-                  {!n.is_read && (
+                  {!n.read && (
                     <div className="w-2 h-2 bg-[#eb2030] rounded-full mt-1.5 flex-shrink-0" />
                   )}
                 </div>

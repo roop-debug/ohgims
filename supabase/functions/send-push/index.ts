@@ -164,13 +164,11 @@ if (!isServiceRole) {
     // Also insert into notifications table if it exists
     // (for the NotificationBell in-app display)
     await supabaseAdmin.from('notifications').insert({
-      user_id,
-      title,
-      body,
-      url: url ?? null,
-      is_read: false,
-    }).then(() => {}).catch(() => {})
-    // silent fail — notifications table is optional
+  user_id,
+  title,
+  message: body,
+  read: false,
+}).then(() => {}).catch(() => {})
 
     return new Response(
       JSON.stringify({ success: true, results }),

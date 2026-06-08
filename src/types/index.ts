@@ -87,15 +87,13 @@ export interface SalesLog {
 }
 
 export interface Notification {
-  id: string
+  notification_id: string
   user_id: string
   title: string
-  body: string
-  url: string | null
-  is_read: boolean
+  message: string
+  read: boolean
   created_at: string
 }
-
 export interface PushSubscription {
   id: string
   user_id: string
