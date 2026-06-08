@@ -24,9 +24,7 @@ export default function AdminDispatch() {
   const [data, setData] = useState<DispatchRow[]>([])
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    fetchDispatches()
-  }, [])
+  useEffect(() => { fetchDispatches() }, [])
 
   async function fetchDispatches() {
     const { data, error } = await supabase
@@ -76,7 +74,6 @@ export default function AdminDispatch() {
 
     if (error) { console.error(error); return }
 
-    // pending → in_transit: decrement master inventory + update PO status
     if (newStatus === 'in_transit') {
       await supabase
         .from('purchase_orders')
@@ -112,7 +109,6 @@ export default function AdminDispatch() {
       }
     }
 
-    // in_transit → delivered: increment distributor inventory + update PO status
     if (newStatus === 'delivered') {
       await supabase
         .from('purchase_orders')
@@ -162,6 +158,14 @@ export default function AdminDispatch() {
     setStatusModalOpen(true)
   }
 
+  // --- ADDED helper to get allowed next statuses ---
+  function getAllowedStatuses(current: DispatchRow['status']): DispatchRow['status'][] {
+    if (current === 'pending') return ['pending', 'in_transit', 'delivered']
+    if (current === 'in_transit') return ['in_transit', 'delivered']
+    return [] // delivered — no changes allowed
+  }
+  // --- END ---
+
   const columns: ColumnDef<DispatchRow>[] = [
     { header: 'No', cell: ({ row }) => row.index + 1 },
     { header: 'Distributor', accessorKey: 'distributor' },
@@ -175,14 +179,19 @@ export default function AdminDispatch() {
     { header: 'ETA', accessorKey: 'eta', cell: ({ getValue }) => getValue() ?? '—' },
     {
       header: 'Action',
-      cell: ({ row }) => (
-        <button
-          onClick={() => handleManageStatus(row.original)}
-          className="text-xs text-[#E8400C] hover:underline"
-        >
-          Manage
-        </button>
-      ),
+      cell: ({ row }) => {
+        // --- UPDATED to hide Manage button for delivered dispatches ---
+        if (row.original.status === 'delivered') return null
+        return (
+          <button
+            onClick={() => handleManageStatus(row.original)}
+            className="text-xs text-[#E8400C] hover:underline"
+          >
+            Manage
+          </button>
+        )
+        // --- END ---
+      },
     },
   ]
 
@@ -202,7 +211,6 @@ export default function AdminDispatch() {
         />
       </div>
 
-      {/* Manage Status Modal */}
       <Modal
         open={statusModalOpen}
         title={selectedDispatch ? `Update Status — ${selectedDispatch.po_no}` : 'Manage Status'}
@@ -211,7 +219,8 @@ export default function AdminDispatch() {
         <div className="flex flex-col gap-4">
           <p className="text-sm text-gray-500">Select the new status for this dispatch:</p>
           <div className="flex flex-col gap-2">
-            {(['pending', 'in_transit', 'delivered'] as const).map((status) => (
+            {/* --- UPDATED to only show allowed statuses based on current status --- */}
+            {selectedDispatch && getAllowedStatuses(selectedDispatch.status).map((status) => (
               <button
                 key={status}
                 onClick={() => setNewStatus(status)}
@@ -225,9 +234,9 @@ export default function AdminDispatch() {
                 <span className="capitalize">{status.replace('_', ' ')}</span>
               </button>
             ))}
+            {/* --- END --- */}
           </div>
 
-          {/* ETA input shown only when moving to in_transit */}
           {newStatus === 'in_transit' && (
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">ETA</label>

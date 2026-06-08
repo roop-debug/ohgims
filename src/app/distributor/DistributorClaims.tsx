@@ -4,10 +4,8 @@ import DataTable from '../../components/shared/DataTable'
 import Modal from '../../components/shared/Modal'
 import StatusBadge from '../../components/shared/StatusBadge'
 import type { ColumnDef } from '@tanstack/react-table'
-// --- ADDED ---
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
-// --- END ---
 
 interface ClaimRow {
   id: string
@@ -30,10 +28,11 @@ const initialForm = {
 export default function DistributorClaims() {
   const { profile } = useAuth()
 
-  // --- ADDED data state and fetch ---
   const [data, setData] = useState<ClaimRow[]>([])
   const [loading, setLoading] = useState(true)
-  const [skuOptions, setSkuOptions] = useState<{ sku_id: string; name: string }[]>([])
+  // --- UPDATED to include selling_price ---
+  const [skuOptions, setSkuOptions] = useState<{ sku_id: string; name: string; selling_price: number }[]>([])
+  // --- END ---
   const [createModalOpen, setCreateModalOpen] = useState(false)
   const [detailsModalOpen, setDetailsModalOpen] = useState(false)
   const [selectedClaim, setSelectedClaim] = useState<ClaimRow | null>(null)
@@ -71,33 +70,57 @@ export default function DistributorClaims() {
   async function fetchSKUs() {
     const { data, error } = await supabase
       .from('skus')
-      .select('sku_id, name')
+      // --- UPDATED to fetch selling_price ---
+      .select('sku_id, name, selling_price')
+      // --- END ---
       .eq('status', 'Active')
 
     if (!error && data) {
-      setSkuOptions(data.map((row: any) => ({ sku_id: row.sku_id, name: row.name })))
+      setSkuOptions(data.map((row: any) => ({
+        sku_id: row.sku_id,
+        name: row.name,
+        // --- ADDED ---
+        selling_price: row.selling_price ?? 0,
+        // --- END ---
+      })))
     }
+  }
+
+  // --- ADDED handler for SKU selection that auto-populates selling rate ---
+  function handleSKUChange(skuId: string) {
+    const sku = skuOptions.find(s => s.sku_id === skuId)
+    setForm(prev => {
+      const updated = {
+        ...prev,
+        sku_id: skuId,
+        selling_rate: sku ? sku.selling_price.toString() : '',
+      }
+      // Recalculate reimbursement
+      const rate = parseFloat(updated.rate) || 0
+      const sellingRate = parseFloat(updated.selling_rate) || 0
+      const units = parseInt(updated.units) || 0
+      if (rate > 0 || sellingRate > 0 || units > 0) {
+        const reimbursement = (rate - sellingRate) * units
+        updated.reimbursement_amt = reimbursement > 0 ? reimbursement.toFixed(2) : '0'
+      }
+      return updated
+    })
   }
   // --- END ---
 
   function handleChange(key: keyof typeof initialForm, value: string) {
-  setForm(prev => {
-    const updated = { ...prev, [key]: value }
-
-    // --- FIXED auto-calc reimbursement ---
-    const rate = parseFloat(key === 'rate' ? value : updated.rate) || 0
-    const sellingRate = parseFloat(key === 'selling_rate' ? value : updated.selling_rate) || 0
-    const units = parseInt(key === 'units' ? value : updated.units) || 0
-
-    if (rate > 0 || sellingRate > 0 || units > 0) {
-      const reimbursement = (rate - sellingRate) * units
-      updated.reimbursement_amt = reimbursement > 0 ? reimbursement.toFixed(2) : '0'
-    }
-    // --- END ---
-
-    return updated
-  })
-}
+    setForm(prev => {
+      const updated = { ...prev, [key]: value }
+      const rate = parseFloat(key === 'rate' ? value : updated.rate) || 0
+      const sellingRate = parseFloat(key === 'selling_rate' ? value : updated.selling_rate) || 0
+      const units = parseInt(key === 'units' ? value : updated.units) || 0
+      if (rate > 0 || sellingRate > 0 || units > 0) {
+        const reimbursement = (rate - sellingRate) * units
+        updated.reimbursement_amt = reimbursement > 0 ? reimbursement.toFixed(2) : '0'
+      }
+      return updated
+    })
+  }
 
   function handleRowClick(row: ClaimRow) {
     setSelectedClaim(row)
@@ -111,37 +134,30 @@ export default function DistributorClaims() {
     setInvoiceFile(null)
   }
 
-  // --- ADDED handleSubmit with Supabase insert + storage upload ---
   async function handleSubmit() {
-  setError(null)
-  if (!form.sku_id || !form.selling_rate || !form.units || !form.claim_type) {
-    setError('Please fill all required fields')
-    return
-  }
-  // --- ADDED invoice check ---
-  if (!invoiceFile) {
-    setError('Please upload an invoice')
-    return
-  }
-  // --- END ---
-  setSubmitting(true)
+    setError(null)
+    if (!form.sku_id || !form.selling_rate || !form.units || !form.claim_type) {
+      setError('Please fill all required fields')
+      return
+    }
+    if (!invoiceFile) {
+      setError('Please upload an invoice')
+      return
+    }
+    setSubmitting(true)
 
-    // 1. Upload invoice if provided
     let invoiceUrl = ''
     if (invoiceFile) {
       const filePath = `${profile?.id}/${Date.now()}_${invoiceFile.name}`
       const { error: uploadError } = await supabase.storage
         .from('claim-invoices')
         .upload(filePath, invoiceFile)
-
       if (uploadError) { setError(uploadError.message); setSubmitting(false); return }
       invoiceUrl = filePath
     }
 
-    // 2. Generate claim ID
     const claimId = `CLM-${new Date().getFullYear()}-${Date.now().toString().slice(-5)}`
 
-    // 3. Insert claim
     const { error: claimError } = await supabase
       .from('claims')
       .insert({
@@ -164,7 +180,6 @@ export default function DistributorClaims() {
     handleCloseCreate()
     fetchClaims()
   }
-  // --- END ---
 
   const columns: ColumnDef<ClaimRow>[] = [
     { header: 'Sr No.', cell: ({ row }) => row.index + 1 },
@@ -190,23 +205,14 @@ export default function DistributorClaims() {
       <div className="flex flex-col gap-4">
         <div className="flex items-center justify-between">
           <h1 className="text-lg font-semibold text-gray-900">Claims</h1>
-          <button
-            onClick={() => setCreateModalOpen(true)}
-            className="px-4 py-2 text-sm bg-[#E8400C] text-white rounded-lg hover:bg-[#c93509] transition-colors"
-          >+ Create Claim</button>
+          <button onClick={() => setCreateModalOpen(true)}
+            className="px-4 py-2 text-sm bg-[#E8400C] text-white rounded-lg hover:bg-[#c93509] transition-colors">
+            + Create Claim
+          </button>
         </div>
 
-        <DataTable
-          columns={columns}
-          data={data}
-          loading={loading}
-          searchable
-          exportable
-          exportFilename="claims"
-          todayToggle
-          onRowClick={handleRowClick}
-          emptyMessage="No claims found"
-        />
+        <DataTable columns={columns} data={data} loading={loading} searchable exportable
+          exportFilename="claims" todayToggle onRowClick={handleRowClick} emptyMessage="No claims found" />
       </div>
 
       {/* Create Claim Modal */}
@@ -223,8 +229,8 @@ export default function DistributorClaims() {
 
           <div>
             <label className={labelClass}>SKU</label>
-            {/* --- ADDED populated SKU dropdown --- */}
-            <select value={form.sku_id} onChange={(e) => handleChange('sku_id', e.target.value)} className={inputClass}>
+            {/* --- UPDATED to use handleSKUChange which auto-populates selling rate --- */}
+            <select value={form.sku_id} onChange={(e) => handleSKUChange(e.target.value)} className={inputClass}>
               <option value="">Select SKU...</option>
               {skuOptions.map((s) => (
                 <option key={s.sku_id} value={s.sku_id}>{s.name} ({s.sku_id})</option>
@@ -242,9 +248,11 @@ export default function DistributorClaims() {
             </div>
             <div>
               <label className={labelClass}>Selling Rate</label>
+              {/* --- UPDATED: pre-filled from SKU but editable --- */}
               <input type="number" value={form.selling_rate}
                 onChange={(e) => handleChange('selling_rate', e.target.value)}
                 placeholder="0.00" className={inputClass} />
+              {/* --- END --- */}
             </div>
             <div>
               <label className={labelClass}>Units</label>
@@ -262,7 +270,6 @@ export default function DistributorClaims() {
             </div>
             <div>
               <label className={labelClass}>Type</label>
-              {/* --- UPDATED claim types to match DB enum --- */}
               <select value={form.claim_type}
                 onChange={(e) => handleChange('claim_type', e.target.value)} className={inputClass}>
                 <option value="">Select type...</option>
@@ -271,7 +278,6 @@ export default function DistributorClaims() {
                 <option value="Expiry">Expiry</option>
                 <option value="Other">Other</option>
               </select>
-              {/* --- END --- */}
             </div>
           </div>
 
