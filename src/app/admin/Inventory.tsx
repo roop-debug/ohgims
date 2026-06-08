@@ -12,22 +12,20 @@ interface InventoryRow {
   sku: string
   name: string
   status: 'in_stock' | 'low_stock' | 'out_of_stock'
+  sku_status: 'Active' | 'Inactive'
   stock_in: number
   stock_out: number
   total_stock: number
   pcs_per_unit: number
-  // --- ADDED ---
   price: number
   selling_price: number
   gst_rate: number
-  // --- END ---
 }
 
 export default function AdminInventory() {
   const [addModalOpen, setAddModalOpen] = useState(false)
   const [manageModalOpen, setManageModalOpen] = useState(false)
   const [selectedItem, setSelectedItem] = useState<InventoryRow | null>(null)
-  // --- ADDED SKU details modal state ---
   const [skuModalOpen, setSkuModalOpen] = useState(false)
   const [selectedSKU, setSelectedSKU] = useState<InventoryRow | null>(null)
   const [editMode, setEditMode] = useState(false)
@@ -36,8 +34,6 @@ export default function AdminInventory() {
   const [editSellingPrice, setEditSellingPrice] = useState('')
   const [editGST, setEditGST] = useState('')
   const [editPcsPerUnit, setEditPcsPerUnit] = useState('')
-  // --- END ---
-
   const [data, setData] = useState<InventoryRow[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -51,9 +47,8 @@ export default function AdminInventory() {
         stock_out,
         total_stock,
         status,
-        skus (name, pcs_per_unit, price, selling_price, gst_rate)
+        skus (name, pcs_per_unit, price, selling_price, gst_rate, status)
       `)
-      // --- ADDED selling_price, price, gst_rate to select ---
       .order('date', { ascending: false })
 
     if (!error && data) {
@@ -65,15 +60,14 @@ export default function AdminInventory() {
             sku: row.sku_id,
             name: row.skus?.name,
             status: row.status,
+            sku_status: row.skus?.status ?? 'Active',
             stock_in: 0,
             stock_out: 0,
             total_stock: row.total_stock,
             pcs_per_unit: row.skus?.pcs_per_unit ?? 1,
-            // --- ADDED ---
             price: row.skus?.price ?? 0,
             selling_price: row.skus?.selling_price ?? 0,
             gst_rate: row.skus?.gst_rate ?? 0,
-            // --- END ---
           }
         }
         grouped[row.sku_id].stock_in += row.stock_in
@@ -86,18 +80,13 @@ export default function AdminInventory() {
 
   useEffect(() => { fetchInventory() }, [])
 
-  // Add Item form state
   const [newSKU, setNewSKU] = useState('')
   const [newName, setNewName] = useState('')
   const [newPcsPerUnit, setNewPcsPerUnit] = useState('')
   const [newRate, setNewRate] = useState('')
-  // --- ADDED selling price state ---
   const [newSellingPrice, setNewSellingPrice] = useState('')
-  // --- END ---
   const [newStock, setNewStock] = useState('')
   const [newGST, setNewGST] = useState('')
-
-  // Manage Stock state
   const [stockValue, setStockValue] = useState(0)
 
   async function handleAddItem() {
@@ -109,9 +98,7 @@ export default function AdminInventory() {
         sku_id: newSKU,
         name: newName,
         price: parseFloat(newRate),
-        // --- ADDED selling_price ---
         selling_price: parseFloat(newSellingPrice) || 0,
-        // --- END ---
         gst_rate: parseFloat(newGST) || 0,
         pcs_per_unit: parseInt(newPcsPerUnit) || 1,
         status: 'Active',
@@ -160,9 +147,7 @@ export default function AdminInventory() {
     setNewName('')
     setNewPcsPerUnit('')
     setNewRate('')
-    // --- ADDED reset ---
     setNewSellingPrice('')
-    // --- END ---
     setNewGST('')
     setNewStock('')
     setAddModalOpen(false)
@@ -170,26 +155,38 @@ export default function AdminInventory() {
   }
 
   async function handleSaveStock() {
-    if (!selectedItem) return
-    const diff = stockValue - selectedItem.total_stock
-    if (diff === 0) { setManageModalOpen(false); return }
-    const newTotal = stockValue
-    const newStatus = newTotal <= 0 ? 'Out of Stock' : newTotal <= 10 ? 'Low Stock' : 'In Stock'
-    const { error } = await supabase
-      .from('master_inventory')
-      .insert({
-        sku_id: selectedItem.sku,
-        date: new Date().toISOString().split('T')[0],
-        stock_in: diff > 0 ? diff : 0,
-        stock_out: diff < 0 ? Math.abs(diff) : 0,
-        total_stock: newTotal,
-        status: newStatus,
-      })
-    if (error) { console.error(error); return }
-    setManageModalOpen(false)
-    setSelectedItem(null)
-    fetchInventory()
-  }
+  if (!selectedItem) return
+  const diff = stockValue - selectedItem.total_stock
+  if (diff === 0) { setManageModalOpen(false); return }
+  const newTotal = stockValue
+  const newStatus = newTotal <= 0 ? 'Out of Stock' : newTotal <= 10 ? 'Low Stock' : 'In Stock'
+
+  const { data: currentInv } = await supabase
+    .from('master_inventory')
+    .select('inventory_id, stock_in, stock_out')
+    .eq('sku_id', selectedItem.sku)
+    .order('date', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (!currentInv) return
+
+  const { error } = await supabase
+    .from('master_inventory')
+    .update({
+      stock_in: diff > 0 ? currentInv.stock_in + diff : currentInv.stock_in,
+      stock_out: diff < 0 ? currentInv.stock_out + Math.abs(diff) : currentInv.stock_out,
+      total_stock: newTotal,
+      status: newStatus,
+      date: new Date().toISOString().split('T')[0],
+    })
+    .eq('inventory_id', currentInv.inventory_id)
+
+  if (error) { console.error(error); return }
+  setManageModalOpen(false)
+  setSelectedItem(null)
+  fetchInventory()
+}
 
   function handleManageStock(row: InventoryRow) {
     setSelectedItem(row)
@@ -197,7 +194,6 @@ export default function AdminInventory() {
     setManageModalOpen(true)
   }
 
-  // --- ADDED SKU details modal handlers ---
   function handleViewSKU(row: InventoryRow) {
     setSelectedSKU(row)
     setEditMode(false)
@@ -233,19 +229,18 @@ export default function AdminInventory() {
     fetchInventory()
   }
 
-  async function handleDeleteSKU() {
+  async function handleToggleSKUStatus() {
     if (!selectedSKU) return
-    if (!window.confirm(`Are you sure you want to delete SKU "${selectedSKU.name}"? This cannot be undone.`)) return
+    const newStatus = selectedSKU.sku_status === 'Active' ? 'Inactive' : 'Active'
     const { error } = await supabase
       .from('skus')
-      .delete()
+      .update({ status: newStatus })
       .eq('sku_id', selectedSKU.sku)
     if (error) { console.error(error); return }
     setSkuModalOpen(false)
     setSelectedSKU(null)
     fetchInventory()
   }
-  // --- END ---
 
   const inputClass = 'w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#E8400C]'
   const labelClass = 'block text-sm font-medium text-gray-700 mb-1'
@@ -259,13 +254,25 @@ export default function AdminInventory() {
       accessorKey: 'status',
       cell: ({ getValue }) => <StatusBadge status={getValue() as any} />,
     },
+    {
+      header: 'Listed',
+      accessorKey: 'sku_status',
+      cell: ({ getValue }) => (
+        <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
+          getValue() === 'Active'
+            ? 'bg-green-100 text-green-700'
+            : 'bg-gray-100 text-gray-500'
+        }`}>
+          {getValue() as string}
+        </span>
+      ),
+    },
     { header: 'Stock In (boxes)', accessorKey: 'stock_in' },
     { header: 'Stock Out (boxes)', accessorKey: 'stock_out' },
     { header: 'Total Stock (boxes)', accessorKey: 'total_stock' },
     { header: 'Pcs/Box', accessorKey: 'pcs_per_unit' },
     {
       header: 'Action',
-      // --- UPDATED to show both Manage and Details buttons ---
       cell: ({ row }) => (
         <div className="flex gap-2">
           <button
@@ -282,15 +289,12 @@ export default function AdminInventory() {
           </button>
         </div>
       ),
-      // --- END ---
     },
   ]
 
   return (
     <AppLayout>
       <div className="flex flex-col gap-4">
-
-        {/* Header row */}
         <div className="flex items-center justify-between">
           <h1 className="text-lg font-semibold text-gray-900">Inventory</h1>
           <div className="flex gap-2">
@@ -309,7 +313,6 @@ export default function AdminInventory() {
           </div>
         </div>
 
-        {/* Table */}
         <DataTable
           columns={columns}
           data={data}
@@ -327,43 +330,33 @@ export default function AdminInventory() {
         <div className="flex flex-col gap-4">
           <div>
             <label className={labelClass}>SKU</label>
-            <input value={newSKU} onChange={(e) => setNewSKU(e.target.value)}
-              placeholder="e.g. SKU-001" className={inputClass} />
+            <input value={newSKU} onChange={(e) => setNewSKU(e.target.value)} placeholder="e.g. SKU-001" className={inputClass} />
           </div>
           <div>
             <label className={labelClass}>Item Name</label>
-            <input value={newName} onChange={(e) => setNewName(e.target.value)}
-              placeholder="e.g. Product A" className={inputClass} />
+            <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="e.g. Product A" className={inputClass} />
           </div>
           <div>
             <label className={labelClass}>Pcs per Box</label>
-            <input type="number" value={newPcsPerUnit} onChange={(e) => setNewPcsPerUnit(e.target.value)}
-              placeholder="e.g. 36" className={inputClass} />
+            <input type="number" value={newPcsPerUnit} onChange={(e) => setNewPcsPerUnit(e.target.value)} placeholder="e.g. 36" className={inputClass} />
           </div>
           <div>
             <label className={labelClass}>Price per Pc (₹)</label>
-            <input type="number" value={newRate} onChange={(e) => setNewRate(e.target.value)}
-              placeholder="0.00" className={inputClass} />
+            <input type="number" value={newRate} onChange={(e) => setNewRate(e.target.value)} placeholder="0.00" className={inputClass} />
           </div>
-          {/* --- ADDED selling price field --- */}
           <div>
             <label className={labelClass}>Selling Price per Pc (₹)</label>
-            <input type="number" value={newSellingPrice} onChange={(e) => setNewSellingPrice(e.target.value)}
-              placeholder="0.00" className={inputClass} />
+            <input type="number" value={newSellingPrice} onChange={(e) => setNewSellingPrice(e.target.value)} placeholder="0.00" className={inputClass} />
           </div>
-          {/* --- END --- */}
           <div>
             <label className={labelClass}>GST Rate (%)</label>
-            <input type="number" value={newGST} onChange={(e) => setNewGST(e.target.value)}
-              placeholder="e.g. 18" className={inputClass} />
+            <input type="number" value={newGST} onChange={(e) => setNewGST(e.target.value)} placeholder="e.g. 18" className={inputClass} />
           </div>
           <div>
             <label className={labelClass}>Initial Stock (boxes)</label>
-            <input type="number" value={newStock} onChange={(e) => setNewStock(e.target.value)}
-              placeholder="e.g. 100" className={inputClass} />
+            <input type="number" value={newStock} onChange={(e) => setNewStock(e.target.value)} placeholder="e.g. 100" className={inputClass} />
           </div>
-          <button onClick={handleAddItem}
-            className="w-full bg-[#E8400C] text-white py-2 rounded-lg text-sm font-medium hover:bg-[#c93509] transition-colors mt-2">
+          <button onClick={handleAddItem} className="w-full bg-[#E8400C] text-white py-2 rounded-lg text-sm font-medium hover:bg-[#c93509] transition-colors mt-2">
             Add Item
           </button>
         </div>
@@ -404,7 +397,7 @@ export default function AdminInventory() {
         </div>
       </Modal>
 
-      {/* --- ADDED SKU Details Modal --- */}
+      {/* SKU Details Modal */}
       <Modal
         open={skuModalOpen}
         title={selectedSKU ? `SKU — ${selectedSKU.sku}` : 'SKU Details'}
@@ -414,7 +407,6 @@ export default function AdminInventory() {
           <div className="flex flex-col gap-4">
             {!editMode ? (
               <>
-                {/* View mode */}
                 <div className="flex flex-col gap-3">
                   <div className="flex justify-between text-sm">
                     <span className="text-gray-500">SKU ID</span>
@@ -423,6 +415,12 @@ export default function AdminInventory() {
                   <div className="flex justify-between text-sm">
                     <span className="text-gray-500">Name</span>
                     <span className="font-medium text-gray-900">{selectedSKU.name}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-500">Status</span>
+                    <span className={`text-sm font-medium ${selectedSKU.sku_status === 'Active' ? 'text-green-600' : 'text-gray-400'}`}>
+                      {selectedSKU.sku_status}
+                    </span>
                   </div>
                   <div className="flex justify-between text-sm">
                     <span className="text-gray-500">Price per Pc</span>
@@ -449,10 +447,14 @@ export default function AdminInventory() {
                 </div>
                 <div className="flex gap-3 mt-2">
                   <button
-                    onClick={handleDeleteSKU}
-                    className="flex-1 py-2 text-sm border border-red-200 text-red-500 rounded-lg hover:bg-red-50 transition-colors"
+                    onClick={handleToggleSKUStatus}
+                    className={`flex-1 py-2 text-sm border rounded-lg transition-colors ${
+                      selectedSKU.sku_status === 'Active'
+                        ? 'border-red-200 text-red-500 hover:bg-red-50'
+                        : 'border-green-200 text-green-600 hover:bg-green-50'
+                    }`}
                   >
-                    Delete SKU
+                    {selectedSKU.sku_status === 'Active' ? 'Unlist Product' : 'Relist Product'}
                   </button>
                   <button
                     onClick={handleEnableEdit}
@@ -464,7 +466,6 @@ export default function AdminInventory() {
               </>
             ) : (
               <>
-                {/* Edit mode */}
                 <div className="flex flex-col gap-3">
                   <div>
                     <label className={labelClass}>Name</label>
@@ -506,7 +507,6 @@ export default function AdminInventory() {
           </div>
         )}
       </Modal>
-      {/* --- END --- */}
 
     </AppLayout>
   )
