@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useState } from 'react'
 import type { Session, User } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabase'
 import type { Profile } from '../types'
+import { requestPermission, subscribeToPush } from '../lib/notifications'
 
 interface AuthContextType {
   session: Session | null
@@ -29,26 +30,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-  supabase.auth.getSession().then(({ data: { session } }) => {
-    setSession(session)
-    if (session?.user) fetchProfile(session.user.id)
-    else setLoading(false)
-  }).catch(() => {
-    // Supabase not connected yet, just stop loading
-    setLoading(false)
-  })
-
-  const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-    setSession(session)
-    if (session?.user) fetchProfile(session.user.id)
-    else {
-      setProfile(null)
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session)
+      if (session?.user) fetchProfile(session.user.id)
+      else setLoading(false)
+    }).catch(() => {
       setLoading(false)
-    }
-  })
+    })
 
-  return () => subscription.unsubscribe()
-}, [])
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session)
+      if (session?.user) fetchProfile(session.user.id)
+      else {
+        setProfile(null)
+        setLoading(false)
+      }
+    })
+
+    return () => subscription.unsubscribe()
+  }, [])
 
   async function fetchProfile(userId: string) {
     const { data } = await supabase
@@ -59,6 +59,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     setProfile(data)
     setLoading(false)
+
+    // Request push permission after login
+    if ('Notification' in window && Notification.permission === 'default') {
+      const granted = await requestPermission()
+      if (granted) await subscribeToPush()
+    } else if (Notification.permission === 'granted') {
+      await subscribeToPush().catch(() => {})
+    }
   }
 
   const role = profile?.role ?? null

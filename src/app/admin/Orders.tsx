@@ -4,9 +4,7 @@ import DataTable from '../../components/shared/DataTable'
 import Modal from '../../components/shared/Modal'
 import StatusBadge from '../../components/shared/StatusBadge'
 import type { ColumnDef } from '@tanstack/react-table'
-// --- ADDED ---
 import { supabase } from '../../lib/supabase'
-// --- END ---
 
 interface OrderRow {
   id: string
@@ -31,8 +29,6 @@ export default function AdminOrders() {
   const [selectedOrder, setSelectedOrder] = useState<OrderRow | null>(null)
   const [orderItems, setOrderItems] = useState<OrderItem[]>([])
   const [modalOpen, setModalOpen] = useState(false)
-
-  // --- ADDED data state and fetch ---
   const [data, setData] = useState<OrderRow[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -75,7 +71,6 @@ export default function AdminOrders() {
       })))
     }
   }
-  // --- END ---
 
   async function handleRowClick(row: OrderRow) {
     setSelectedOrder(row)
@@ -90,46 +85,55 @@ export default function AdminOrders() {
     setOrderItems([])
   }
 
-  // --- ADDED status update handlers ---
   async function handleApprove() {
-  if (!selectedOrder) return
+    if (!selectedOrder) return
 
-  // 1. Approve the order
-  const { error } = await supabase
-    .from('purchase_orders')
-    .update({ status: 'approved' })
-    .eq('po_id', selectedOrder.id)
+    const { error } = await supabase
+      .from('purchase_orders')
+      .update({ status: 'approved' })
+      .eq('po_id', selectedOrder.id)
 
-  if (error) { console.error(error); return }
+    if (error) { console.error(error); return }
 
-  // 2. Auto-create a pending dispatch
-  const { error: dispatchError } = await supabase
-    .from('dispatches')
-    .insert({
-      po_id: selectedOrder.id,
-      distributor_id: selectedOrder.distributor_id,
-      dispatched_at: new Date().toISOString(),
-      eta: null,
-      status: 'pending',
+    const { error: dispatchError } = await supabase
+      .from('dispatches')
+      .insert({
+        po_id: selectedOrder.id,
+        distributor_id: selectedOrder.distributor_id,
+        dispatched_at: new Date().toISOString(),
+        eta: null,
+        status: 'pending',
+      })
+
+    if (dispatchError) { console.error(dispatchError); return }
+
+    // Notify distributor
+    await supabase.functions.invoke('notify-order-status', {
+      body: { order_id: selectedOrder.id, new_status: 'approved' }
     })
 
-  if (dispatchError) { console.error(dispatchError); return }
-
-  handleClose()
-  fetchOrders()
-}
+    handleClose()
+    fetchOrders()
+  }
 
   async function handleCancel() {
     if (!selectedOrder) return
+
     const { error } = await supabase
       .from('purchase_orders')
       .update({ status: 'cancelled' })
       .eq('po_id', selectedOrder.id)
+
     if (error) { console.error(error); return }
+
+    // Notify distributor
+    await supabase.functions.invoke('notify-order-status', {
+      body: { order_id: selectedOrder.id, new_status: 'cancelled' }
+    })
+
     handleClose()
     fetchOrders()
   }
-  // --- END ---
 
   const columns: ColumnDef<OrderRow>[] = [
     { header: 'Sr No.', cell: ({ row }) => row.index + 1 },
@@ -216,7 +220,6 @@ export default function AdminOrders() {
               />
             </div>
 
-            {/* --- ADDED wired action buttons --- */}
             {selectedOrder.status === 'pending' && (
               <div className="flex gap-3 mt-2">
                 <button
@@ -233,7 +236,6 @@ export default function AdminOrders() {
                 </button>
               </div>
             )}
-            {/* Mark Dispatched and Mark Delivered are handled via Dispatch page --- */}
             {selectedOrder.status === 'approved' && (
               <p className="text-sm text-gray-400 text-center mt-2">
                 Order approved — create a dispatch from the Dispatch page.
@@ -244,7 +246,6 @@ export default function AdminOrders() {
                 Order dispatched — mark delivered from the Dispatch page.
               </p>
             )}
-            {/* --- END --- */}
           </div>
         )}
       </Modal>

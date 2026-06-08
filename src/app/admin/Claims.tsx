@@ -4,9 +4,7 @@ import DataTable from '../../components/shared/DataTable'
 import Modal from '../../components/shared/Modal'
 import StatusBadge from '../../components/shared/StatusBadge'
 import type { ColumnDef } from '@tanstack/react-table'
-// --- ADDED ---
 import { supabase } from '../../lib/supabase'
-// --- END ---
 
 interface ClaimRow {
   id: string
@@ -27,8 +25,6 @@ interface ClaimRow {
 export default function AdminClaims() {
   const [selectedClaim, setSelectedClaim] = useState<ClaimRow | null>(null)
   const [modalOpen, setModalOpen] = useState(false)
-
-  // --- ADDED data state and fetch ---
   const [data, setData] = useState<ClaimRow[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -72,7 +68,6 @@ export default function AdminClaims() {
     }
     setLoading(false)
   }
-  // --- END ---
 
   function handleRowClick(row: ClaimRow) {
     setSelectedClaim(row)
@@ -84,7 +79,6 @@ export default function AdminClaims() {
     setSelectedClaim(null)
   }
 
-  // --- ADDED approve and decline handlers ---
   async function handleApprove() {
     if (!selectedClaim) return
     const { error } = await supabase
@@ -92,6 +86,12 @@ export default function AdminClaims() {
       .update({ status: 'approved', resolved_at: new Date().toISOString() })
       .eq('claim_id', selectedClaim.id)
     if (error) { console.error(error); return }
+
+    // Notify distributor
+    await supabase.functions.invoke('notify-claim-status', {
+      body: { claim_id: selectedClaim.id, new_status: 'approved' }
+    })
+
     handleClose()
     fetchClaims()
   }
@@ -103,6 +103,12 @@ export default function AdminClaims() {
       .update({ status: 'declined', resolved_at: new Date().toISOString() })
       .eq('claim_id', selectedClaim.id)
     if (error) { console.error(error); return }
+
+    // Notify distributor
+    await supabase.functions.invoke('notify-claim-status', {
+      body: { claim_id: selectedClaim.id, new_status: 'declined' }
+    })
+
     handleClose()
     fetchClaims()
   }
@@ -113,7 +119,6 @@ export default function AdminClaims() {
       .createSignedUrl(path, 60)
     return data?.signedUrl ?? null
   }
-  // --- END ---
 
   const columns: ColumnDef<ClaimRow>[] = [
     { header: 'No', cell: ({ row }) => row.index + 1 },
@@ -216,7 +221,6 @@ export default function AdminClaims() {
               </div>
             </div>
 
-            {/* --- ADDED signed URL invoice view --- */}
             <div className="flex items-center gap-3">
               <p className="text-xs font-medium text-[#E8400C]">Invoice</p>
               {selectedClaim.invoice_url ? (
@@ -233,9 +237,7 @@ export default function AdminClaims() {
                 <span className="text-sm text-gray-400">No invoice uploaded</span>
               )}
             </div>
-            {/* --- END --- */}
 
-            {/* --- ADDED wired action buttons, only show if pending --- */}
             {selectedClaim.status === 'pending' && (
               <div className="flex gap-3 mt-2">
                 <button
@@ -257,7 +259,6 @@ export default function AdminClaims() {
                 <StatusBadge status={selectedClaim.status} />
               </div>
             )}
-            {/* --- END --- */}
           </div>
         )}
       </Modal>

@@ -155,38 +155,42 @@ export default function AdminInventory() {
   }
 
   async function handleSaveStock() {
-  if (!selectedItem) return
-  const diff = stockValue - selectedItem.total_stock
-  if (diff === 0) { setManageModalOpen(false); return }
-  const newTotal = stockValue
-  const newStatus = newTotal <= 0 ? 'Out of Stock' : newTotal <= 10 ? 'Low Stock' : 'In Stock'
+    if (!selectedItem) return
+    const diff = stockValue - selectedItem.total_stock
+    if (diff === 0) { setManageModalOpen(false); return }
+    const newTotal = stockValue
+    const newStatus = newTotal <= 0 ? 'Out of Stock' : newTotal <= 10 ? 'Low Stock' : 'In Stock'
 
-  const { data: currentInv } = await supabase
-    .from('master_inventory')
-    .select('inventory_id, stock_in, stock_out')
-    .eq('sku_id', selectedItem.sku)
-    .order('date', { ascending: false })
-    .limit(1)
-    .maybeSingle()
+    const { data: currentInv } = await supabase
+      .from('master_inventory')
+      .select('inventory_id, stock_in, stock_out')
+      .eq('sku_id', selectedItem.sku)
+      .order('date', { ascending: false })
+      .limit(1)
+      .maybeSingle()
 
-  if (!currentInv) return
+    if (!currentInv) return
 
-  const { error } = await supabase
-    .from('master_inventory')
-    .update({
-      stock_in: diff > 0 ? currentInv.stock_in + diff : currentInv.stock_in,
-      stock_out: diff < 0 ? currentInv.stock_out + Math.abs(diff) : currentInv.stock_out,
-      total_stock: newTotal,
-      status: newStatus,
-      date: new Date().toISOString().split('T')[0],
-    })
-    .eq('inventory_id', currentInv.inventory_id)
+    const { error } = await supabase
+      .from('master_inventory')
+      .update({
+        stock_in: diff > 0 ? currentInv.stock_in + diff : currentInv.stock_in,
+        stock_out: diff < 0 ? currentInv.stock_out + Math.abs(diff) : currentInv.stock_out,
+        total_stock: newTotal,
+        status: newStatus,
+        date: new Date().toISOString().split('T')[0],
+      })
+      .eq('inventory_id', currentInv.inventory_id)
 
-  if (error) { console.error(error); return }
-  setManageModalOpen(false)
-  setSelectedItem(null)
-  fetchInventory()
-}
+    if (error) { console.error(error); return }
+
+    // Check for low stock and notify admins
+    await supabase.functions.invoke('notify-low-stock')
+
+    setManageModalOpen(false)
+    setSelectedItem(null)
+    fetchInventory()
+  }
 
   function handleManageStock(row: InventoryRow) {
     setSelectedItem(row)
@@ -507,7 +511,6 @@ export default function AdminInventory() {
           </div>
         )}
       </Modal>
-
     </AppLayout>
   )
 }
