@@ -15,8 +15,10 @@ interface InventoryRow {
   stock_in: number
   stock_out: number
   total_stock: number
+  // --- ADDED ---
+  pcs_per_unit: number
+  // --- END ---
 }
-
 
 export default function AdminInventory() {
   const [addModalOpen, setAddModalOpen] = useState(false)
@@ -26,43 +28,45 @@ export default function AdminInventory() {
   const [data, setData] = useState<InventoryRow[]>([])
   const [loading, setLoading] = useState(true)
 
-  // --- MOVED fetchInventory outside useEffect so it can be called from handleAddItem too ---
- async function fetchInventory() {
-  const { data, error } = await supabase
-    .from('master_inventory')
-    .select(`
-      inventory_id,
-      sku_id,
-      stock_in,
-      stock_out,
-      total_stock,
-      status,
-      skus (name)
-    `)
-    .order('date', { ascending: false })
+  async function fetchInventory() {
+    const { data, error } = await supabase
+      .from('master_inventory')
+      .select(`
+        inventory_id,
+        sku_id,
+        stock_in,
+        stock_out,
+        total_stock,
+        status,
+        skus (name, pcs_per_unit)
+      `)
+      // --- ADDED pcs_per_unit to select ---
+      .order('date', { ascending: false })
 
-  if (!error && data) {
-    const grouped: Record<string, any> = {}
-    data.forEach((row: any) => {
-      if (!grouped[row.sku_id]) {
-        grouped[row.sku_id] = {
-          id: row.inventory_id,
-          sku: row.sku_id,
-          name: row.skus?.name,
-          status: row.status,
-          stock_in: 0,
-          stock_out: 0,
-          total_stock: row.total_stock,
+    if (!error && data) {
+      const grouped: Record<string, any> = {}
+      data.forEach((row: any) => {
+        if (!grouped[row.sku_id]) {
+          grouped[row.sku_id] = {
+            id: row.inventory_id,
+            sku: row.sku_id,
+            name: row.skus?.name,
+            status: row.status,
+            stock_in: 0,
+            stock_out: 0,
+            total_stock: row.total_stock,
+            // --- ADDED ---
+            pcs_per_unit: row.skus?.pcs_per_unit ?? 1,
+            // --- END ---
+          }
         }
-      }
-      grouped[row.sku_id].stock_in += row.stock_in
-      grouped[row.sku_id].stock_out += row.stock_out
-    })
-    setData(Object.values(grouped))
+        grouped[row.sku_id].stock_in += row.stock_in
+        grouped[row.sku_id].stock_out += row.stock_out
+      })
+      setData(Object.values(grouped))
+    }
+    setLoading(false)
   }
-  setLoading(false)
-}
-  // --- END CHANGE ---
 
   useEffect(() => {
     fetchInventory()
@@ -71,113 +75,120 @@ export default function AdminInventory() {
   // Add Item form state
   const [newSKU, setNewSKU] = useState('')
   const [newName, setNewName] = useState('')
-  const [newUnit, setNewUnit] = useState('')
+  // --- REMOVED newUnit, ADDED newPcsPerUnit ---
+  const [newPcsPerUnit, setNewPcsPerUnit] = useState('')
+  // --- END ---
   const [newRate, setNewRate] = useState('')
   const [newStock, setNewStock] = useState('')
+  // --- ADDED newGST ---
+  const [newGST, setNewGST] = useState('')
+  // --- END ---
 
   // Manage Stock state
   const [stockValue, setStockValue] = useState(0)
 
-  // --- UPDATED handleAddItem ---
-async function handleAddItem() {
-  if (!newSKU || !newName || !newRate) return
+  async function handleAddItem() {
+    if (!newSKU || !newName || !newRate) return
 
-  // 1. Insert into skus (no stock field anymore)
-  const { error: skuError } = await supabase
-    .from('skus')
-    .insert({
-      sku_id: newSKU,
-      name: newName,
-      price: parseFloat(newRate),
-      gst_rate: 0,
-      status: 'Active',
-    })
+    // 1. Insert into skus
+    const { error: skuError } = await supabase
+      .from('skus')
+      .insert({
+        sku_id: newSKU,
+        name: newName,
+        price: parseFloat(newRate),
+        // --- UPDATED gst_rate and added pcs_per_unit ---
+        gst_rate: parseFloat(newGST) || 0,
+        pcs_per_unit: parseInt(newPcsPerUnit) || 1,
+        // --- END ---
+        status: 'Active',
+      })
 
-  if (skuError) { console.error(skuError); return }
+    if (skuError) { console.error(skuError); return }
+
     const initialStock = Number(newStock) || 0
-  // 2. Create initial master_inventory row with 0 stock
-  const { error: invError } = await supabase
-    .from('master_inventory')
-    .insert({
-      sku_id: newSKU,
-      date: new Date().toISOString().split('T')[0],
-      stock_in: initialStock,
-      stock_out: 0,
-      total_stock: initialStock,
-      status:  initialStock <= 0
-        ? 'Out of Stock'
-        : initialStock <= 10
-        ? 'Low Stock'
-        : 'In Stock',
-    })
-    // --- ADDED in handleAddItem after SKU insert - create distributor_inventory for all existing distributors ---
-const { data: dists, error: distError } = await supabase
-  .from('distributors')
-  .select('distributor_id')
 
-if (distError) { console.error(distError); return }
+    // 2. Create initial master_inventory row
+    const { error: invError } = await supabase
+      .from('master_inventory')
+      .insert({
+        sku_id: newSKU,
+        date: new Date().toISOString().split('T')[0],
+        stock_in: initialStock,
+        stock_out: 0,
+        total_stock: initialStock,
+        status: initialStock <= 0
+          ? 'Out of Stock'
+          : initialStock <= 10
+          ? 'Low Stock'
+          : 'In Stock',
+      })
 
-if (dists && dists.length > 0) {
-  const distInvRows = dists.map((d: any) => ({
-    distributor_id: d.distributor_id,
-    sku_id: newSKU,
-    date: new Date().toISOString().split('T')[0],
-    stock_in: 0,
-    stock_out: 0,
-    total_stock: 0,
-    status: 'Out of Stock',
-  }))
+    if (invError) { console.error(invError); return }
 
-  const { error: invError } = await supabase
-    .from('distributor_inventory')
-    .insert(distInvRows)
+    // 3. Create distributor_inventory for all existing distributors
+    const { data: dists, error: distError } = await supabase
+      .from('distributors')
+      .select('distributor_id')
 
-  if (invError) { console.error(invError); return }
-}
-// --- END ---
+    if (distError) { console.error(distError); return }
 
-  if (invError) { console.error(invError); return }
+    if (dists && dists.length > 0) {
+      const distInvRows = dists.map((d: any) => ({
+        distributor_id: d.distributor_id,
+        sku_id: newSKU,
+        date: new Date().toISOString().split('T')[0],
+        stock_in: 0,
+        stock_out: 0,
+        total_stock: 0,
+        status: 'Out of Stock',
+      }))
 
-  setNewSKU('')
-  setNewName('')
-  setNewUnit('')
-  setNewRate('')
-  setAddModalOpen(false)
-  fetchInventory()
-}
+      const { error: distInvError } = await supabase
+        .from('distributor_inventory')
+        .insert(distInvRows)
 
-// --- END ---
+      if (distInvError) { console.error(distInvError); return }
+    }
 
-// --- UPDATED handleSaveStock ---
-async function handleSaveStock() {
-  if (!selectedItem) return
+    // --- UPDATED resets - removed newUnit, added newPcsPerUnit and newGST ---
+    setNewSKU('')
+    setNewName('')
+    setNewPcsPerUnit('')
+    setNewRate('')
+    setNewGST('')
+    setNewStock('')
+    // --- END ---
+    setAddModalOpen(false)
+    fetchInventory()
+  }
 
-  const diff = stockValue - selectedItem.total_stock
-  if (diff === 0) { setManageModalOpen(false); return }
+  async function handleSaveStock() {
+    if (!selectedItem) return
 
-  const newTotal = stockValue
-  const newStatus = newTotal <= 0 ? 'Out of Stock' : newTotal <= 10 ? 'Low Stock' : 'In Stock'
+    const diff = stockValue - selectedItem.total_stock
+    if (diff === 0) { setManageModalOpen(false); return }
 
-  // Insert a new master_inventory log row reflecting the adjustment
-  const { error } = await supabase
-    .from('master_inventory')
-    .insert({
-      sku_id: selectedItem.sku,
-      date: new Date().toISOString().split('T')[0],
-      stock_in: diff > 0 ? diff : 0,       // increased = stock in
-      stock_out: diff < 0 ? Math.abs(diff) : 0,  // decreased = stock out
-      total_stock: newTotal,
-      status: newStatus,
-    })
+    const newTotal = stockValue
+    const newStatus = newTotal <= 0 ? 'Out of Stock' : newTotal <= 10 ? 'Low Stock' : 'In Stock'
 
-  if (error) { console.error(error); return }
+    const { error } = await supabase
+      .from('master_inventory')
+      .insert({
+        sku_id: selectedItem.sku,
+        date: new Date().toISOString().split('T')[0],
+        stock_in: diff > 0 ? diff : 0,
+        stock_out: diff < 0 ? Math.abs(diff) : 0,
+        total_stock: newTotal,
+        status: newStatus,
+      })
 
-  setManageModalOpen(false)
-  setSelectedItem(null)
-  fetchInventory()
-}
-// --- END ---
-  // --- END CHANGE ---
+    if (error) { console.error(error); return }
+
+    setManageModalOpen(false)
+    setSelectedItem(null)
+    fetchInventory()
+  }
 
   function handleManageStock(row: InventoryRow) {
     setSelectedItem(row)
@@ -194,9 +205,15 @@ async function handleSaveStock() {
       accessorKey: 'status',
       cell: ({ getValue }) => <StatusBadge status={getValue() as any} />,
     },
-    { header: 'Stock In', accessorKey: 'stock_in' },
-    { header: 'Stock Out', accessorKey: 'stock_out' },
-    { header: 'Total Stock', accessorKey: 'total_stock' },
+    { header: 'Stock In (boxes)', accessorKey: 'stock_in' },
+    { header: 'Stock Out (boxes)', accessorKey: 'stock_out' },
+    { header: 'Total Stock (boxes)', accessorKey: 'total_stock' },
+    // --- ADDED pcs_per_unit column ---
+    {
+      header: 'Pcs/Box',
+      accessorKey: 'pcs_per_unit',
+    },
+    // --- END ---
     {
       header: 'Action',
       cell: ({ row }) => (
@@ -272,17 +289,23 @@ async function handleSaveStock() {
               className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#E8400C]"
             />
           </div>
+
+          {/* --- REPLACED Unit field with Pcs per Box --- */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Unit</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Pcs per Box</label>
             <input
-              value={newUnit}
-              onChange={(e) => setNewUnit(e.target.value)}
-              placeholder="e.g. kg, pcs, box"
+              type="number"
+              value={newPcsPerUnit}
+              onChange={(e) => setNewPcsPerUnit(e.target.value)}
+              placeholder="e.g. 36"
               className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#E8400C]"
             />
           </div>
+          {/* --- END --- */}
+
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Rate (₹)</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Price per Pc (₹)</label>
+            {/* --- UPDATED label to make clear it's per piece --- */}
             <input
               type="number"
               value={newRate}
@@ -292,24 +315,37 @@ async function handleSaveStock() {
             />
           </div>
 
+          {/* --- ADDED GST field --- */}
           <div>
-  <label className="block text-sm font-medium text-gray-700 mb-1">Initial Stock</label>
-  <input
-    type="number"
-    value={newStock}
-    onChange={(e) => setNewStock(e.target.value)}
-    placeholder="e.g. 100"
-    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#E8400C]"
-  />
-</div>
-          {/* --- ADDED onClick to Add Item button --- */}
+            <label className="block text-sm font-medium text-gray-700 mb-1">GST Rate (%)</label>
+            <input
+              type="number"
+              value={newGST}
+              onChange={(e) => setNewGST(e.target.value)}
+              placeholder="e.g. 18"
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#E8400C]"
+            />
+          </div>
+          {/* --- END --- */}
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Initial Stock (boxes)</label>
+            {/* --- UPDATED label to make clear it's in boxes --- */}
+            <input
+              type="number"
+              value={newStock}
+              onChange={(e) => setNewStock(e.target.value)}
+              placeholder="e.g. 100"
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#E8400C]"
+            />
+          </div>
+
           <button
             onClick={handleAddItem}
             className="w-full bg-[#E8400C] text-white py-2 rounded-lg text-sm font-medium hover:bg-[#c93509] transition-colors mt-2"
           >
             Add Item
           </button>
-          {/* --- END CHANGE --- */}
         </div>
       </Modal>
 
@@ -322,8 +358,16 @@ async function handleSaveStock() {
         <div className="flex flex-col gap-6">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-3">
-              Adjust Stock
+              {/* --- UPDATED label to show boxes --- */}
+              Adjust Stock (boxes)
             </label>
+            {/* --- ADDED pcs equivalent hint --- */}
+            {selectedItem && (
+              <p className="text-xs text-gray-400 mb-3">
+                1 box = {selectedItem.pcs_per_unit} pcs — current: {stockValue * selectedItem.pcs_per_unit} pcs total
+              </p>
+            )}
+            {/* --- END --- */}
             <div className="flex items-center gap-4">
               <button
                 onClick={() => setStockValue((v) => Math.max(0, v - 1))}
@@ -346,11 +390,11 @@ async function handleSaveStock() {
             </div>
           </div>
           <button
-  onClick={handleSaveStock}
-  className="w-full bg-[#E8400C] text-white py-2 rounded-lg text-sm font-medium hover:bg-[#c93509] transition-colors"
->
-  Save Changes
-</button>
+            onClick={handleSaveStock}
+            className="w-full bg-[#E8400C] text-white py-2 rounded-lg text-sm font-medium hover:bg-[#c93509] transition-colors"
+          >
+            Save Changes
+          </button>
         </div>
       </Modal>
 

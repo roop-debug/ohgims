@@ -4,10 +4,8 @@ import AppLayout from '../../components/shared/AppLayout'
 import DataTable from '../../components/shared/DataTable'
 import Modal from '../../components/shared/Modal'
 import type { ColumnDef } from '@tanstack/react-table'
-// --- ADDED ---
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
-// --- END ---
 
 interface SalesRow {
   id: string
@@ -30,10 +28,11 @@ export default function DistributorSales() {
   const navigate = useNavigate()
   const { profile } = useAuth()
 
-  // --- ADDED data state, SKU list, and fetch ---
   const [data, setData] = useState<SalesRow[]>([])
   const [loading, setLoading] = useState(true)
-  const [skuOptions, setSkuOptions] = useState<{ sku_id: string; name: string }[]>([])
+  // --- UPDATED skuOptions to include pcs_per_unit ---
+  const [skuOptions, setSkuOptions] = useState<{ sku_id: string; name: string; pcs_per_unit: number; total_stock: number }[]>([])
+  // --- END ---
   const [modalOpen, setModalOpen] = useState(false)
   const [form, setForm] = useState(initialForm)
   const [submitting, setSubmitting] = useState(false)
@@ -70,7 +69,9 @@ export default function DistributorSales() {
   async function fetchSKUs() {
     const { data, error } = await supabase
       .from('distributor_inventory')
-      .select('sku_id, skus(name)')
+      // --- UPDATED to also fetch pcs_per_unit from skus ---
+      .select('sku_id, total_stock, skus(name, pcs_per_unit)')
+      // --- END ---
       .eq('distributor_id', profile?.distributor_id)
       .gt('total_stock', 0)
 
@@ -78,9 +79,18 @@ export default function DistributorSales() {
       setSkuOptions(data.map((row: any) => ({
         sku_id: row.sku_id,
         name: row.skus?.name,
+        // --- ADDED ---
+        pcs_per_unit: row.skus?.pcs_per_unit ?? 1,
+        total_stock: row.total_stock, // in boxes
+        // --- END ---
       })))
     }
   }
+
+  // --- ADDED helper to get selected SKU's pcs_per_unit ---
+  const selectedSKU = skuOptions.find(s => s.sku_id === form.sku_id)
+  const pcsPerUnit = selectedSKU?.pcs_per_unit ?? 1
+  const maxPcs = (selectedSKU?.total_stock ?? 0) * pcsPerUnit
   // --- END ---
 
   function handleChange(key: keyof typeof initialForm, value: string) {
@@ -99,83 +109,80 @@ export default function DistributorSales() {
     setError(null)
   }
 
-  // --- ADDED handleSubmit with Supabase insert ---
   async function handleSubmit() {
-  setError(null)
-  if (!form.sku_id || !form.units_sold || !form.selling_price) {
-    setError('Please fill all required fields')
-    return
-  }
+    setError(null)
+    if (!form.sku_id || !form.units_sold || !form.selling_price) {
+      setError('Please fill all required fields')
+      return
+    }
 
-  // --- ADDED stock validation ---
-  const unitsSold = parseInt(form.units_sold)
-  const { data: invData } = await supabase
-    .from('distributor_inventory')
-    .select('total_stock')
-    .eq('distributor_id', profile?.distributor_id)
-    .eq('sku_id', form.sku_id)
-    .single()
+    const unitsSold = parseInt(form.units_sold) // in pcs
 
-  if (!invData || unitsSold > invData.total_stock) {
-    setError(`Only ${invData?.total_stock ?? 0} units available in stock`)
-    return
-  }
-  // --- END ---
+    // --- UPDATED stock validation to check against pcs (boxes × pcs_per_unit) ---
+    if (unitsSold > maxPcs) {
+      setError(`Only ${maxPcs} pcs available in stock (${selectedSKU?.total_stock} boxes × ${pcsPerUnit} pcs/box)`)
+      return
+    }
+    // --- END ---
 
-  setSubmitting(true)
+    setSubmitting(true)
 
-  const sellingPrice = parseFloat(form.selling_price)
-  const totalRevenue = parseFloat(form.total_revenue)
+    const sellingPrice = parseFloat(form.selling_price)
+    const totalRevenue = parseFloat(form.total_revenue)
 
-  // 1. Insert sales log
-  const { error: salesError } = await supabase
-    .from('sales_logs')
-    .insert({
-      distributor_id: profile?.distributor_id,
-      sku_id: form.sku_id,
-      date: new Date().toISOString().split('T')[0],
-      units_sold: unitsSold,
-      selling_price: sellingPrice,
-      total_revenue: totalRevenue,
-    })
-
-  if (salesError) { setError(salesError.message); setSubmitting(false); return }
-
-  // 2. Update distributor inventory — decrease stock
-  const { data: currentInv } = await supabase
-    .from('distributor_inventory')
-    .select('dist_inventory_id, stock_out, total_stock')
-    .eq('distributor_id', profile?.distributor_id)
-    .eq('sku_id', form.sku_id)
-    .single()
-
-  if (currentInv) {
-    const newTotal = currentInv.total_stock - unitsSold
-    await supabase
-      .from('distributor_inventory')
-      .update({
-        stock_out: currentInv.stock_out + unitsSold,
-        total_stock: newTotal,
-        status: newTotal <= 0 ? 'Out of Stock' : newTotal <= 10 ? 'Low Stock' : 'In Stock',
+    // 1. Insert sales log (units in pcs)
+    const { error: salesError } = await supabase
+      .from('sales_logs')
+      .insert({
+        distributor_id: profile?.distributor_id,
+        sku_id: form.sku_id,
         date: new Date().toISOString().split('T')[0],
+        units_sold: unitsSold, // pcs
+        selling_price: sellingPrice,
+        total_revenue: totalRevenue,
       })
-      .eq('dist_inventory_id', currentInv.dist_inventory_id)
-  }
 
-  setSubmitting(false)
-  handleClose()
-  fetchSales()
-  fetchSKUs()
-}
-  // --- END ---
+    if (salesError) { setError(salesError.message); setSubmitting(false); return }
+
+    // --- UPDATED inventory decrement — convert pcs to boxes ---
+    const boxesDecremented = Math.ceil(unitsSold / pcsPerUnit)
+
+    const { data: currentInv } = await supabase
+      .from('distributor_inventory')
+      .select('dist_inventory_id, stock_out, total_stock')
+      .eq('distributor_id', profile?.distributor_id)
+      .eq('sku_id', form.sku_id)
+      .single()
+
+    if (currentInv) {
+      const newTotal = currentInv.total_stock - boxesDecremented
+      await supabase
+        .from('distributor_inventory')
+        .update({
+          stock_out: currentInv.stock_out + boxesDecremented,
+          total_stock: newTotal,
+          status: newTotal <= 0 ? 'Out of Stock' : newTotal <= 10 ? 'Low Stock' : 'In Stock',
+          date: new Date().toISOString().split('T')[0],
+        })
+        .eq('dist_inventory_id', currentInv.dist_inventory_id)
+    }
+    // --- END ---
+
+    setSubmitting(false)
+    handleClose()
+    fetchSales()
+    fetchSKUs()
+  }
 
   const columns: ColumnDef<SalesRow>[] = [
     { header: 'Sr No.', cell: ({ row }) => row.index + 1 },
     { header: 'Items', accessorKey: 'item_name' },
     { header: "SKU's", accessorKey: 'sku_id' },
-    { header: 'Units Sold', accessorKey: 'units_sold' },
+    // --- UPDATED header to show pcs ---
+    { header: 'Units Sold (pcs)', accessorKey: 'units_sold' },
+    // --- END ---
     {
-      header: 'Selling Price',
+      header: 'Selling Price (per pc)',
       accessorKey: 'selling_price',
       cell: ({ getValue }) => `₹${(getValue() as number).toLocaleString('en-IN')}`,
     },
@@ -222,7 +229,6 @@ export default function DistributorSales() {
         <div className="flex flex-col gap-4">
           <div>
             <label className={labelClass}>SKU</label>
-            {/* --- ADDED populated SKU dropdown from distributor's in-stock inventory --- */}
             <select
               value={form.sku_id}
               onChange={(e) => handleChange('sku_id', e.target.value)}
@@ -230,24 +236,50 @@ export default function DistributorSales() {
             >
               <option value="">Select SKU...</option>
               {skuOptions.map((s) => (
-                <option key={s.sku_id} value={s.sku_id}>{s.name} ({s.sku_id})</option>
+                // --- UPDATED to show pcs_per_unit and available stock in pcs ---
+                <option key={s.sku_id} value={s.sku_id}>
+                  {s.name} ({s.sku_id}) — {s.total_stock * s.pcs_per_unit} pcs available
+                </option>
+                // --- END ---
               ))}
             </select>
-            {/* --- END --- */}
           </div>
+
+          {/* --- ADDED pcs per box hint when SKU is selected --- */}
+          {selectedSKU && (
+            <p className="text-xs text-gray-400 -mt-2">
+              1 box = {pcsPerUnit} pcs · {selectedSKU.total_stock} boxes in stock = {maxPcs} pcs total
+            </p>
+          )}
+          {/* --- END --- */}
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className={labelClass}>Units Sold</label>
-              <input type="number" value={form.units_sold}
-                onChange={(e) => handleChange('units_sold', e.target.value)}
-                placeholder="0" className={inputClass} />
+              {/* --- UPDATED label to show pcs --- */}
+              <label className={labelClass}>Units Sold (pcs)</label>
+              <div className="relative">
+                <input
+                  type="number"
+                  value={form.units_sold}
+                  onChange={(e) => handleChange('units_sold', e.target.value)}
+                  placeholder="0"
+                  className={`${inputClass} pr-10`}
+                />
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">pcs</span>
+              </div>
+              {/* --- END --- */}
             </div>
             <div>
-              <label className={labelClass}>Selling Price (₹)</label>
-              <input type="number" value={form.selling_price}
+              {/* --- UPDATED label to show per pc --- */}
+              <label className={labelClass}>Selling Price (₹/pc)</label>
+              {/* --- END --- */}
+              <input
+                type="number"
+                value={form.selling_price}
                 onChange={(e) => handleChange('selling_price', e.target.value)}
-                placeholder="0.00" className={inputClass} />
+                placeholder="0.00"
+                className={inputClass}
+              />
             </div>
           </div>
 
