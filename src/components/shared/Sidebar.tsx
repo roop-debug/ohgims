@@ -45,7 +45,7 @@ export default function Sidebar({ onNavigate }: SidebarProps) {
 
       {/* Logo */}
       <div className="px-6 py-5 border-b border-gray-100">
-        <span className="text-2xl font-black text-[#E8400C]">Oh!G</span>
+        <span className="text-2xl font-black text-[#eb2030]">Oh!G</span>
         <span className="text-xs text-gray-400 ml-2">IMS</span>
       </div>
 

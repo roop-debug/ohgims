@@ -153,7 +153,7 @@ export default function AdminDashboard() {
             {/* --- ADDED navigate to dispatch page --- */}
             <button
               onClick={() => navigate('/admin/dispatch')}
-              className="bg-[#E8400C] text-white text-sm px-4 py-2 rounded-lg hover:bg-[#c93509] transition-colors"
+              className="bg-[#eb2030] text-white text-sm px-4 py-2 rounded-lg hover:bg-[#c4001a] transition-colors"
             >
               Add Dispatch
             </button>
@@ -176,7 +176,7 @@ export default function AdminDashboard() {
             {/* --- ADDED navigate to inventory page --- */}
             <button
               onClick={() => navigate('/admin/inventory')}
-              className="bg-[#E8400C] text-white text-sm px-4 py-2 rounded-lg hover:bg-[#c93509] transition-colors"
+              className="bg-[#eb2030] text-white text-sm px-4 py-2 rounded-lg hover:bg-[#c4001a] transition-colors"
             >
               Add SKU
             </button>

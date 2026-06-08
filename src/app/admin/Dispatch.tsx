@@ -186,7 +186,7 @@ export default function AdminDispatch() {
         return (
           <button
             onClick={() => handleManageStatus(row.original)}
-            className="text-xs text-[#E8400C] hover:underline"
+            className="text-xs text-[#eb2030] hover:underline"
           >
             Manage
           </button>
@@ -225,7 +225,7 @@ export default function AdminDispatch() {
                 onClick={() => setNewStatus(status)}
                 className={`flex items-center gap-3 px-4 py-3 rounded-lg border transition-colors text-sm ${
                   newStatus === status
-                    ? 'border-[#E8400C] bg-orange-50'
+                    ? 'border-[#eb2030] bg-orange-50'
                     : 'border-gray-200 hover:bg-gray-50'
                 }`}
               >
@@ -242,14 +242,14 @@ export default function AdminDispatch() {
                 type="datetime-local"
                 value={newETA}
                 onChange={(e) => setNewETA(e.target.value)}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#E8400C]"
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#eb2030]"
               />
             </div>
           )}
 
           <button
             onClick={handleSaveStatus}
-            className="w-full bg-[#E8400C] text-white py-2 rounded-lg text-sm font-medium hover:bg-[#c93509] transition-colors mt-2"
+            className="w-full bg-[#eb2030] text-white py-2 rounded-lg text-sm font-medium hover:bg-[#c4001a] transition-colors mt-2"
           >
             Save Status
           </button>

@@ -149,7 +149,7 @@ export default function DistributorDashboard() {
             {/* --- ADDED navigate to create order --- */}
             <button
               onClick={() => navigate('/distributor/orders/create')}
-              className="bg-[#E8400C] text-white text-sm px-4 py-2 rounded-lg hover:bg-[#c93509] transition-colors"
+              className="bg-[#eb2030] text-white text-sm px-4 py-2 rounded-lg hover:bg-[#c4001a] transition-colors"
             >Create Order</button>
             {/* --- END --- */}
           </div>

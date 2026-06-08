@@ -45,7 +45,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
            >
                ☰
            </button>
-           <span className="md:hidden text-lg font-black text-[#E8400C]">Oh!G</span>
+           <span className="md:hidden text-lg font-black text-[#eb2030]">Oh!G</span>
           </div>
 
           {/* Right — notification bell */}

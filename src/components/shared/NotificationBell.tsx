@@ -95,7 +95,7 @@ export default function NotificationBell() {
       >
         <span className="text-xl">🔔</span>
         {unreadCount > 0 && (
-          <span className="absolute top-1 right-1 bg-[#E8400C] text-white text-xs rounded-full w-4 h-4 flex items-center justify-center leading-none">
+          <span className="absolute top-1 right-1 bg-[#eb2030] text-white text-xs rounded-full w-4 h-4 flex items-center justify-center leading-none">
             {unreadCount > 9 ? '9+' : unreadCount}
           </span>
         )}
@@ -126,7 +126,7 @@ export default function NotificationBell() {
                     <p className="text-xs text-gray-400 mt-1">{timeAgo(n.created_at)}</p>
                   </div>
                   {!n.is_read && (
-                    <div className="w-2 h-2 bg-[#E8400C] rounded-full mt-1.5 flex-shrink-0" />
+                    <div className="w-2 h-2 bg-[#eb2030] rounded-full mt-1.5 flex-shrink-0" />
                   )}
                 </div>
               ))

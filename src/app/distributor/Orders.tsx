@@ -143,7 +143,7 @@ export default function DistributorOrders() {
           <h1 className="text-lg font-semibold text-gray-900">Orders Overview</h1>
           <button
             onClick={() => navigate('/distributor/orders/create')}
-            className="px-4 py-2 text-sm bg-[#E8400C] text-white rounded-lg hover:bg-[#c93509] transition-colors"
+            className="px-4 py-2 text-sm bg-[#eb2030] text-white rounded-lg hover:bg-[#c4001a] transition-colors"
           >
             + Create Orders
           </button>

@@ -50,13 +50,13 @@ export default function FilterBar({
           onClick={() => setOpen((v) => !v)}
           className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm transition-colors ${
             open || hasFilters
-              ? 'border-[#E8400C] text-[#E8400C] bg-orange-50'
+              ? 'border-[#eb2030] text-[#eb2030] bg-orange-50'
               : 'border-gray-200 text-gray-600'
           }`}
         >
           ⚙ Filters
           {hasFilters && (
-            <span className="bg-[#E8400C] text-white text-xs rounded-full w-4 h-4 flex items-center justify-center">
+            <span className="bg-[#eb2030] text-white text-xs rounded-full w-4 h-4 flex items-center justify-center">
               !
             </span>
           )}
@@ -75,7 +75,7 @@ export default function FilterBar({
           <select
             value={values.status ?? ''}
             onChange={(e) => handleChange('status', e.target.value)}
-            className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-[#E8400C]"
+            className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-[#eb2030]"
           >
             <option value="">All Statuses</option>
             {statusOptions.map((s) => (
@@ -88,7 +88,7 @@ export default function FilterBar({
           <select
             value={values.distributor ?? ''}
             onChange={(e) => handleChange('distributor', e.target.value)}
-            className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-[#E8400C]"
+            className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-[#eb2030]"
           >
             <option value="">All Distributors</option>
             {distributors.map((d) => (
@@ -103,13 +103,13 @@ export default function FilterBar({
               type="date"
               value={values.dateFrom ?? ''}
               onChange={(e) => handleChange('dateFrom', e.target.value)}
-              className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-[#E8400C]"
+              className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-[#eb2030]"
             />
             <input
               type="date"
               value={values.dateTo ?? ''}
               onChange={(e) => handleChange('dateTo', e.target.value)}
-              className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-[#E8400C]"
+              className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-[#eb2030]"
             />
           </>
         )}

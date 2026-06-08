@@ -230,7 +230,7 @@ export default function AdminOrders() {
                 </button>
                 <button
                   onClick={handleApprove}
-                  className="flex-1 py-2 text-sm bg-[#E8400C] text-white rounded-lg hover:bg-[#c93509] transition-colors"
+                  className="flex-1 py-2 text-sm bg-[#eb2030] text-white rounded-lg hover:bg-[#c4001a] transition-colors"
                 >
                   Approve Order
                 </button>

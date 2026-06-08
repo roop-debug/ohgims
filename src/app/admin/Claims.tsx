@@ -126,7 +126,7 @@ export default function AdminClaims() {
       header: 'Claim ID',
       accessorKey: 'claim_number',
       cell: ({ getValue }) => (
-        <span className="text-[#E8400C] underline cursor-pointer">{getValue() as string}</span>
+        <span className="text-[#eb2030] underline cursor-pointer">{getValue() as string}</span>
       ),
     },
     { header: 'Distributor', accessorKey: 'distributor' },
@@ -165,49 +165,49 @@ export default function AdminClaims() {
           <div className="flex flex-col gap-5">
             <div className="grid grid-cols-2 gap-x-6 gap-y-4">
               <div>
-                <p className="text-xs font-medium text-[#E8400C] mb-1">Claim No</p>
+                <p className="text-xs font-medium text-[#eb2030] mb-1">Claim No</p>
                 <div className="bg-gray-50 rounded-lg px-3 py-2 text-sm text-gray-900">
                   {selectedClaim.claim_number}
                 </div>
               </div>
               <div>
-                <p className="text-xs font-medium text-[#E8400C] mb-1">Claim Type</p>
+                <p className="text-xs font-medium text-[#eb2030] mb-1">Claim Type</p>
                 <div className="bg-gray-50 rounded-lg px-3 py-2 text-sm text-gray-900">
                   {selectedClaim.claim_type}
                 </div>
               </div>
               <div>
-                <p className="text-xs font-medium text-[#E8400C] mb-1">Distributor</p>
+                <p className="text-xs font-medium text-[#eb2030] mb-1">Distributor</p>
                 <div className="bg-gray-50 rounded-lg px-3 py-2 text-sm text-gray-900">
                   {selectedClaim.distributor}
                 </div>
               </div>
               <div>
-                <p className="text-xs font-medium text-[#E8400C] mb-1">SKU</p>
+                <p className="text-xs font-medium text-[#eb2030] mb-1">SKU</p>
                 <div className="bg-gray-50 rounded-lg px-3 py-2 text-sm text-gray-900">
                   {selectedClaim.sku_id}
                 </div>
               </div>
               <div>
-                <p className="text-xs font-medium text-[#E8400C] mb-1">Price Point</p>
+                <p className="text-xs font-medium text-[#eb2030] mb-1">Price Point</p>
                 <div className="bg-gray-50 rounded-lg px-3 py-2 text-sm text-gray-900">
                   ₹{selectedClaim.price_point.toLocaleString('en-IN')}
                 </div>
               </div>
               <div>
-                <p className="text-xs font-medium text-[#E8400C] mb-1">Selling Price</p>
+                <p className="text-xs font-medium text-[#eb2030] mb-1">Selling Price</p>
                 <div className="bg-gray-50 rounded-lg px-3 py-2 text-sm text-gray-900">
                   ₹{selectedClaim.selling_price.toLocaleString('en-IN')}
                 </div>
               </div>
               <div>
-                <p className="text-xs font-medium text-[#E8400C] mb-1">Units</p>
+                <p className="text-xs font-medium text-[#eb2030] mb-1">Units</p>
                 <div className="bg-gray-50 rounded-lg px-3 py-2 text-sm text-gray-900">
                   {selectedClaim.units}
                 </div>
               </div>
               <div>
-                <p className="text-xs font-medium text-[#E8400C] mb-1">Claim Amount</p>
+                <p className="text-xs font-medium text-[#eb2030] mb-1">Claim Amount</p>
                 <div className="bg-gray-50 rounded-lg px-3 py-2 text-sm text-gray-900">
                   ₹{selectedClaim.claim_amount.toLocaleString('en-IN')}
                 </div>
@@ -215,21 +215,21 @@ export default function AdminClaims() {
             </div>
 
             <div>
-              <p className="text-xs font-medium text-[#E8400C] mb-1">Reason</p>
+              <p className="text-xs font-medium text-[#eb2030] mb-1">Reason</p>
               <div className="bg-gray-50 rounded-lg px-3 py-2 text-sm text-gray-900 min-h-[60px]">
                 {selectedClaim.reason || '—'}
               </div>
             </div>
 
             <div className="flex items-center gap-3">
-              <p className="text-xs font-medium text-[#E8400C]">Invoice</p>
+              <p className="text-xs font-medium text-[#eb2030]">Invoice</p>
               {selectedClaim.invoice_url ? (
                 <button
                   onClick={async () => {
                     const url = await getInvoiceUrl(selectedClaim.invoice_url!)
                     if (url) window.open(url, '_blank')
                   }}
-                  className="px-4 py-2 text-sm bg-[#E8400C] text-white rounded-lg hover:bg-[#c93509] transition-colors"
+                  className="px-4 py-2 text-sm bg-[#eb2030] text-white rounded-lg hover:bg-[#c4001a] transition-colors"
                 >
                   View Invoice
                 </button>
@@ -242,13 +242,13 @@ export default function AdminClaims() {
               <div className="flex gap-3 mt-2">
                 <button
                   onClick={handleDecline}
-                  className="flex-1 py-2 text-sm border border-[#E8400C] text-[#E8400C] rounded-lg hover:bg-orange-50 transition-colors"
+                  className="flex-1 py-2 text-sm border border-[#eb2030] text-[#eb2030] rounded-lg hover:bg-orange-50 transition-colors"
                 >
                   Decline
                 </button>
                 <button
                   onClick={handleApprove}
-                  className="flex-1 py-2 text-sm bg-[#E8400C] text-white rounded-lg hover:bg-[#c93509] transition-colors"
+                  className="flex-1 py-2 text-sm bg-[#eb2030] text-white rounded-lg hover:bg-[#c4001a] transition-colors"
                 >
                   Approve
                 </button>

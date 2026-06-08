@@ -105,7 +105,7 @@ export default function CreateOrder() {
           <h1 className="text-lg font-semibold text-gray-900">Create Order</h1>
           <button
             onClick={() => navigate('/distributor/claims')}
-            className="px-4 py-2 text-sm bg-[#E8400C] text-white rounded-lg hover:bg-[#c93509] transition-colors"
+            className="px-4 py-2 text-sm bg-[#eb2030] text-white rounded-lg hover:bg-[#c4001a] transition-colors"
           >
             + Create Claim
           </button>
@@ -159,7 +159,7 @@ export default function CreateOrder() {
                             type="number"
                             value={item.quantity}
                             onChange={(e) => handleQuantityChange(item.sku_id, Number(e.target.value))}
-                            className="w-14 text-center border border-gray-200 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-[#E8400C]"
+                            className="w-14 text-center border border-gray-200 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-[#eb2030]"
                           />
                           {/* --- ADDED boxes label --- */}
                           <span className="text-xs text-gray-400">boxes</span>
@@ -201,7 +201,7 @@ export default function CreateOrder() {
           <button
             onClick={handleReleasePO}
             disabled={submitting || selectedItems.length === 0}
-            className="px-4 py-2 text-sm bg-[#E8400C] text-white rounded-lg hover:bg-[#c93509] transition-colors disabled:opacity-50"
+            className="px-4 py-2 text-sm bg-[#eb2030] text-white rounded-lg hover:bg-[#c4001a] transition-colors disabled:opacity-50"
           >
             {submitting ? 'Releasing...' : 'Release Purchase Order'}
           </button>

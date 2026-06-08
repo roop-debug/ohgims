@@ -187,7 +187,7 @@ export default function DistributorClaims() {
     },
   ]
 
-  const inputClass = 'w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#E8400C]'
+  const inputClass = 'w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#eb2030]'
   const labelClass = 'block text-sm font-medium text-gray-700 mb-1'
 
   return (
@@ -196,7 +196,7 @@ export default function DistributorClaims() {
         <div className="flex items-center justify-between">
           <h1 className="text-lg font-semibold text-gray-900">Claims</h1>
           <button onClick={() => setCreateModalOpen(true)}
-            className="px-4 py-2 text-sm bg-[#E8400C] text-white rounded-lg hover:bg-[#c93509] transition-colors">
+            className="px-4 py-2 text-sm bg-[#eb2030] text-white rounded-lg hover:bg-[#c4001a] transition-colors">
             + Create Claim
           </button>
         </div>
@@ -210,7 +210,7 @@ export default function DistributorClaims() {
         <div className="flex flex-col gap-4">
           <div className="flex items-center gap-3">
             <label className="text-sm font-medium text-gray-700">Invoice</label>
-            <label className="px-4 py-2 text-sm bg-[#E8400C] text-white rounded-lg hover:bg-[#c93509] transition-colors cursor-pointer">
+            <label className="px-4 py-2 text-sm bg-[#eb2030] text-white rounded-lg hover:bg-[#c4001a] transition-colors cursor-pointer">
               {invoiceFile ? invoiceFile.name : 'Upload Invoice'}
               <input type="file" accept="image/*,application/pdf" className="hidden"
                 onChange={(e) => setInvoiceFile(e.target.files?.[0] ?? null)} />
@@ -287,7 +287,7 @@ export default function DistributorClaims() {
               Cancel
             </button>
             <button onClick={handleSubmit} disabled={submitting}
-              className="flex-1 py-2 text-sm bg-[#E8400C] text-white rounded-lg hover:bg-[#c93509] transition-colors disabled:opacity-50">
+              className="flex-1 py-2 text-sm bg-[#eb2030] text-white rounded-lg hover:bg-[#c4001a] transition-colors disabled:opacity-50">
               {submitting ? 'Submitting...' : 'Submit Request'}
             </button>
           </div>

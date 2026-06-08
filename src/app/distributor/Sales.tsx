@@ -197,7 +197,7 @@ export default function DistributorSales() {
     },
   ]
 
-  const inputClass = 'w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#E8400C]'
+  const inputClass = 'w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#eb2030]'
   const labelClass = 'block text-sm font-medium text-gray-700 mb-1'
 
   return (
@@ -211,7 +211,7 @@ export default function DistributorSales() {
               Create Claim
             </button>
             <button onClick={() => setModalOpen(true)}
-              className="w-9 h-9 bg-[#E8400C] text-white rounded-lg hover:bg-[#c93509] transition-colors flex items-center justify-center text-xl">
+              className="w-9 h-9 bg-[#eb2030] text-white rounded-lg hover:bg-[#c4001a] transition-colors flex items-center justify-center text-xl">
               +
             </button>
           </div>
@@ -277,7 +277,7 @@ export default function DistributorSales() {
               Cancel
             </button>
             <button onClick={handleSubmit} disabled={submitting}
-              className="flex-1 py-2 text-sm bg-[#E8400C] text-white rounded-lg hover:bg-[#c93509] transition-colors disabled:opacity-50">
+              className="flex-1 py-2 text-sm bg-[#eb2030] text-white rounded-lg hover:bg-[#c4001a] transition-colors disabled:opacity-50">
               {submitting ? 'Saving...' : 'Log Sale'}
             </button>
           </div>
