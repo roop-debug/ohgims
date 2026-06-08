@@ -92,15 +92,32 @@ export default function AdminOrders() {
 
   // --- ADDED status update handlers ---
   async function handleApprove() {
-    if (!selectedOrder) return
-    const { error } = await supabase
-      .from('purchase_orders')
-      .update({ status: 'approved' })
-      .eq('po_id', selectedOrder.id)
-    if (error) { console.error(error); return }
-    handleClose()
-    fetchOrders()
-  }
+  if (!selectedOrder) return
+
+  // 1. Approve the order
+  const { error } = await supabase
+    .from('purchase_orders')
+    .update({ status: 'approved' })
+    .eq('po_id', selectedOrder.id)
+
+  if (error) { console.error(error); return }
+
+  // 2. Auto-create a pending dispatch
+  const { error: dispatchError } = await supabase
+    .from('dispatches')
+    .insert({
+      po_id: selectedOrder.id,
+      distributor_id: selectedOrder.distributor_id,
+      dispatched_at: new Date().toISOString(),
+      eta: null,
+      status: 'pending',
+    })
+
+  if (dispatchError) { console.error(dispatchError); return }
+
+  handleClose()
+  fetchOrders()
+}
 
   async function handleCancel() {
     if (!selectedOrder) return
