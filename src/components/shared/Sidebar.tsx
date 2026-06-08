@@ -1,4 +1,4 @@
-import { NavLink, useNavigate } from 'react-router-dom'
+import { NavLink } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import { supabase } from '../../lib/supabase'
 
@@ -30,7 +30,7 @@ interface SidebarProps {
 
 export default function Sidebar({ onNavigate }: SidebarProps) {
   const { isAdmin, profile } = useAuth()
-  const navigate = useNavigate()
+  
   const navItems = isAdmin ? adminNavItems : distributorNavItems
 
   // --- UPDATED handleLogout to use window.location for clean redirect ---
