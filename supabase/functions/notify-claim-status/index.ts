@@ -46,7 +46,7 @@ Deno.serve(async (req) => {
     const { data: claim } = await supabaseAdmin
       .from('claims')
       .select('distributor_id, claim_number')
-      .eq('id', claim_id)
+      .eq('claim_id', claim_id)
       .single()
     if (!claim) return new Response(JSON.stringify({ error: 'Claim not found' }), { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
 

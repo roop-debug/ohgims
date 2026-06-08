@@ -45,7 +45,7 @@ Deno.serve(async (req) => {
     const { data: order } = await supabaseAdmin
       .from('purchase_orders')
       .select('distributor_id')
-      .eq('id', order_id)
+      .eq('po_id', order_id)
       .single()
     if (!order) return new Response(JSON.stringify({ error: 'Order not found' }), { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
 
