@@ -100,13 +100,14 @@ Deno.serve(async (req) => {
     }
 
     // Always insert in-app notification first
-    await supabaseAdmin.from('notifications').insert({
-      user_id,
-      title,
-      message: body,
-      url: url ?? null,
-      read: false,
-    }).catch((err: any) => console.error('notification insert error:', err))
+    const { error: notifError } = await supabaseAdmin.from('notifications').insert({
+  user_id,
+  title,
+  message: body,
+  url: url ?? null,
+  read: false,
+})
+if (notifError) console.error('notification insert error:', notifError)
 
     // Get push subscriptions
     const { data: subscriptions } = await supabaseAdmin
