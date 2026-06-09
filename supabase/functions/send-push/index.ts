@@ -87,20 +87,21 @@ Deno.serve(async (req) => {
     }
 
     // Allow service role calls from other edge functions
-    const isServiceRole = authHeader === `Bearer ${serviceRoleKey}`
+const isServiceRole = authHeader.startsWith('Bearer sb_secret_') || 
+                      authHeader === `Bearer ${serviceRoleKey}`
 
-    if (!isServiceRole) {
-      const anonClient = createClient(supabaseUrl, anonKey, {
-        global: { headers: { Authorization: authHeader } }
-      })
-      const { data: { user } } = await anonClient.auth.getUser()
-      if (!user) {
-        return new Response(JSON.stringify({ error: 'Unauthorized' }), {
-          status: 401,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        })
-      }
-    }
+if (!isServiceRole) {
+  const anonClient = createClient(supabaseUrl, anonKey, {
+    global: { headers: { Authorization: authHeader } }
+  })
+  const { data: { user } } = await anonClient.auth.getUser()
+  if (!user) {
+    return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+      status: 401,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    })
+  }
+}
 
     const { user_id, title, body, url } = await req.json()
 
