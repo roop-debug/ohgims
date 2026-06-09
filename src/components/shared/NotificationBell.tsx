@@ -9,8 +9,7 @@ export default function NotificationBell() {
   const [open, setOpen] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
 
-  const unreadCount = notifications.filter((n) => !n.read).length
-  // Fetch notifications on mount
+  const unreadCount = notifications.filter((n) => !n.read).length  // Fetch notifications on mount
   useEffect(() => {
     if (!user) return
     fetchNotifications()
@@ -58,21 +57,20 @@ export default function NotificationBell() {
   }
 
   async function handleOpen() {
-    setOpen((v) => !v)
+  setOpen((v) => !v)
 
-    // Mark all as read when opening
-    if (!open && unreadCount > 0) {
-      await supabase
-        .from('notifications')
-        .update({ is_read: true })
-        .eq('user_id', user!.id)
-        .eq('is_read', false)
+  if (!open && unreadCount > 0) {
+    await supabase
+      .from('notifications')
+      .update({ read: true })
+      .eq('user_id', user!.id)
+      .eq('read', false)
 
-      setNotifications((prev) =>
-        prev.map((n) => ({ ...n, is_read: true }))
-      )
-    }
+    setNotifications((prev) =>
+      prev.map((n) => ({ ...n, read: true }))
+    )
   }
+}
 
   function timeAgo(dateStr: string) {
     const diff = Date.now() - new Date(dateStr).getTime()
@@ -128,7 +126,7 @@ export default function NotificationBell() {
       <div className="w-2 h-2 bg-[#eb2030] rounded-full mt-1.5 flex-shrink-0" />
     )}
   </div>
-)) 
+))
             )}
           </div>
 
