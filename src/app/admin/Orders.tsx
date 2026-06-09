@@ -86,35 +86,57 @@ export default function AdminOrders() {
   }
 
   async function handleApprove() {
-    if (!selectedOrder) return
+  if (!selectedOrder) return
 
-    const { error } = await supabase
-      .from('purchase_orders')
-      .update({ status: 'approved' })
-      .eq('po_id', selectedOrder.id)
+  // Check if sufficient stock exists for all line items
+  const insufficientItems: string[] = []
 
-    if (error) { console.error(error); return }
+  for (const item of orderItems) {
+    const { data: inv } = await supabase
+      .from('master_inventory')
+      .select('total_stock')
+      .eq('sku_id', item.sku)
+      .order('date', { ascending: false })
+      .limit(1)
+      .maybeSingle()
 
-    const { error: dispatchError } = await supabase
-      .from('dispatches')
-      .insert({
-        po_id: selectedOrder.id,
-        distributor_id: selectedOrder.distributor_id,
-        dispatched_at: new Date().toISOString(),
-        eta: null,
-        status: 'pending',
-      })
+    const available = inv?.total_stock ?? 0
+    if (available < item.quantity) {
+      insufficientItems.push(`${item.item_name} (need ${item.quantity}, have ${available})`)
+    }
+  }
 
-    if (dispatchError) { console.error(dispatchError); return }
+  if (insufficientItems.length > 0) {
+    alert(`Cannot approve — insufficient stock:\n${insufficientItems.join('\n')}`)
+    return
+  }
 
-    // Notify distributor
-    await supabase.functions.invoke('notify-order-status', {
-      body: { order_id: selectedOrder.id, new_status: 'approved' }
+  const { error } = await supabase
+    .from('purchase_orders')
+    .update({ status: 'approved' })
+    .eq('po_id', selectedOrder.id)
+
+  if (error) { console.error(error); return }
+
+  const { error: dispatchError } = await supabase
+    .from('dispatches')
+    .insert({
+      po_id: selectedOrder.id,
+      distributor_id: selectedOrder.distributor_id,
+      dispatched_at: new Date().toISOString(),
+      eta: null,
+      status: 'pending',
     })
 
-    handleClose()
-    fetchOrders()
-  }
+  if (dispatchError) { console.error(dispatchError); return }
+
+  await supabase.functions.invoke('notify-order-status', {
+    body: { order_id: selectedOrder.id, new_status: 'approved' }
+  })
+
+  handleClose()
+  fetchOrders()
+}
 
   async function handleCancel() {
     if (!selectedOrder) return

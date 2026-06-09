@@ -6,10 +6,13 @@ const corsHeaders = {
 }
 
 const STATUS_MESSAGES: Record<string, { title: string; body: string }> = {
-  approved:   { title: '✅ Order Approved',   body: 'Your order has been approved and is being prepared.' },
-  dispatched: { title: '🚚 Order Dispatched', body: 'Your order is on the way! Check dispatch details.' },
-  delivered:  { title: '📦 Order Delivered',  body: 'Your order has been marked as delivered.' },
-  cancelled:  { title: '❌ Order Cancelled',  body: 'Your order has been cancelled. Contact admin for details.' },
+  approved:         { title: 'Order Approved',          body: 'Your order has been approved and is being prepared.' },
+  dispatched:       { title: 'Order Dispatched',        body: 'Your order is on the way! Check dispatch details.' },
+  in_transit:       { title: 'Order In Transit',        body: 'Your order has been dispatched and is in transit.' },
+  delivered:        { title: 'Order Delivered',         body: 'Your order has been marked as delivered.' },
+  cancelled:        { title: 'Order Cancelled',         body: 'Your order has been cancelled. Contact admin for details.' },
+  pending_dispatch: { title: 'Dispatch Pending',        body: 'Your order is approved and pending dispatch.' },
+  out_of_stock:     { title: 'Item Out of Stock',       body: 'An item in your order is out of stock.' },
 }
 
 Deno.serve(async (req) => {

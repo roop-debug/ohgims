@@ -91,7 +91,10 @@ export default function CreateOrder() {
     const { error: lineError } = await supabase
       .from('po_line_items')
       .insert(lineItems)
-
+    // Notify admins of new order
+  await supabase.functions.invoke('notify-new-order', {
+  body: { order_id: poId, distributor_name: profile?.distributor_id }
+})
     if (lineError) { console.error(lineError); setSubmitting(false); return }
 
     setSubmitting(false)

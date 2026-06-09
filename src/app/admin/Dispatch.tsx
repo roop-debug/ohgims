@@ -53,16 +53,84 @@ export default function AdminDispatch() {
     setLoading(false)
   }
 
+  async function updateMasterInventory(poNo: string, operation: 'deduct' | 'skip') {
+    if (operation === 'skip') return
+    const { data: lineItems } = await supabase
+      .from('po_line_items')
+      .select('sku_id, quantity')
+      .eq('po_id', poNo)
+
+    if (!lineItems) return
+    for (const item of lineItems) {
+      const { data: currentInv } = await supabase
+        .from('master_inventory')
+        .select('inventory_id, stock_out, total_stock')
+        .eq('sku_id', item.sku_id)
+        .order('date', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+      if (currentInv) {
+        const newTotal = Math.max(0, currentInv.total_stock - item.quantity)
+        await supabase
+          .from('master_inventory')
+          .update({
+            stock_out: currentInv.stock_out + item.quantity,
+            total_stock: newTotal,
+            status: newTotal <= 0 ? 'Out of Stock' : newTotal <= 10 ? 'Low Stock' : 'In Stock',
+            date: new Date().toISOString().split('T')[0],
+          }
+        )
+          .eq('inventory_id', currentInv.inventory_id)
+          if (newTotal <= 10) {
+    await supabase.functions.invoke('notify-low-stock', { body: {} })
+  }
+      }
+    }
+  }
+
+  async function updateDistributorInventory(poNo: string, distributorId: string) {
+    const { data: lineItems } = await supabase
+      .from('po_line_items')
+      .select('sku_id, quantity')
+      .eq('po_id', poNo)
+
+    if (!lineItems) return
+    for (const item of lineItems) {
+      const { data: currentInv } = await supabase
+        .from('distributor_inventory')
+        .select('dist_inventory_id, stock_in, total_stock')
+        .eq('distributor_id', distributorId)
+        .eq('sku_id', item.sku_id)
+        .order('date', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+      if (currentInv) {
+        const newTotal = currentInv.total_stock + item.quantity
+        await supabase
+          .from('distributor_inventory')
+          .update({
+            stock_in: currentInv.stock_in + item.quantity,
+            total_stock: newTotal,
+            status: newTotal <= 0 ? 'Out of Stock' : newTotal <= 10 ? 'Low Stock' : 'In Stock',
+            date: new Date().toISOString().split('T')[0],
+          })
+          .eq('dist_inventory_id', currentInv.dist_inventory_id)
+      }
+    }
+  }
+
   async function handleSaveStatus() {
     if (!selectedDispatch) return
 
+    const previousStatus = selectedDispatch.status
     const updateData: any = { status: newStatus }
 
     if (newStatus === 'in_transit') {
       updateData.dispatched_at = new Date().toISOString()
       updateData.eta = newETA || null
     }
-
     if (newStatus === 'delivered') {
       updateData.delivered_at = new Date().toISOString()
     }
@@ -74,79 +142,40 @@ export default function AdminDispatch() {
 
     if (error) { console.error(error); return }
 
+    // --- in_transit: deduct master inventory ---
     if (newStatus === 'in_transit') {
       await supabase
         .from('purchase_orders')
         .update({ status: 'dispatched' })
         .eq('po_id', selectedDispatch.po_no)
 
-      const { data: lineItems } = await supabase
-        .from('po_line_items')
-        .select('sku_id, quantity')
-        .eq('po_id', selectedDispatch.po_no)
+      await updateMasterInventory(selectedDispatch.po_no, 'deduct')
 
-      if (lineItems) {
-        for (const item of lineItems) {
-          const { data: currentInv } = await supabase
-            .from('master_inventory')
-            .select('inventory_id, stock_out, total_stock')
-            .eq('sku_id', item.sku_id)
-            .order('date', { ascending: false })
-            .limit(1)
-            .maybeSingle()
-
-          if (currentInv) {
-            const newTotal = Math.max(0, currentInv.total_stock - item.quantity)
-            await supabase
-              .from('master_inventory')
-              .update({
-                stock_out: currentInv.stock_out + item.quantity,
-                total_stock: newTotal,
-                status: newTotal <= 0 ? 'Out of Stock' : newTotal <= 10 ? 'Low Stock' : 'In Stock',
-                date: new Date().toISOString().split('T')[0],
-              })
-              .eq('inventory_id', currentInv.inventory_id)
-          }
-        }
-      }
+      // Notify distributor
+      await supabase.functions.invoke('notify-order-status', {
+        body: { order_id: selectedDispatch.po_no, new_status: 'dispatched' }
+      })
     }
 
+    // --- delivered: update distributor inventory ---
+    // If going directly from pending to delivered, also deduct master inventory
     if (newStatus === 'delivered') {
       await supabase
         .from('purchase_orders')
         .update({ status: 'delivered' })
         .eq('po_id', selectedDispatch.po_no)
 
-      const { data: lineItems } = await supabase
-        .from('po_line_items')
-        .select('sku_id, quantity')
-        .eq('po_id', selectedDispatch.po_no)
-
-      if (lineItems) {
-        for (const item of lineItems) {
-          const { data: currentInv } = await supabase
-            .from('distributor_inventory')
-            .select('dist_inventory_id, stock_in, total_stock')
-            .eq('distributor_id', selectedDispatch.distributor_id)
-            .eq('sku_id', item.sku_id)
-            .order('date', { ascending: false })
-            .limit(1)
-            .maybeSingle()
-
-          if (currentInv) {
-            const newTotal = currentInv.total_stock + item.quantity
-            await supabase
-              .from('distributor_inventory')
-              .update({
-                stock_in: currentInv.stock_in + item.quantity,
-                total_stock: newTotal,
-                status: newTotal <= 0 ? 'Out of Stock' : newTotal <= 10 ? 'Low Stock' : 'In Stock',
-                date: new Date().toISOString().split('T')[0],
-              })
-              .eq('dist_inventory_id', currentInv.dist_inventory_id)
-          }
-        }
+      // Only deduct master inventory if it wasn't already done (i.e. was not in_transit before)
+      if (previousStatus === 'pending') {
+        await updateMasterInventory(selectedDispatch.po_no, 'deduct')
       }
+
+      await updateDistributorInventory(selectedDispatch.po_no, selectedDispatch.distributor_id)
+
+      // Notify distributor
+      await supabase.functions.invoke('notify-order-status', {
+        body: { order_id: selectedDispatch.po_no, new_status: 'delivered' }
+      })
     }
 
     setStatusModalOpen(false)

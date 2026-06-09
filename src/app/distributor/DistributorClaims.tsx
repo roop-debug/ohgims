@@ -125,16 +125,26 @@ export default function DistributorClaims() {
   }
 
   async function handleSubmit() {
-    setError(null)
-    if (!form.sku_id || !form.selling_rate || !form.units || !form.claim_type) {
-      setError('Please fill all required fields')
-      return
-    }
-    if (!invoiceFile) {
-      setError('Please upload an invoice')
-      return
-    }
-    setSubmitting(true)
+  setError(null)
+  if (!form.sku_id || !form.selling_rate || !form.units || !form.claim_type) {
+    setError('Please fill all required fields')
+    return
+  }
+
+  // Check if distributor has any sales logged for this SKU
+  const { count } = await supabase
+    .from('sales_logs')
+    .select('*', { count: 'exact', head: true })
+    .eq('distributor_id', profile?.distributor_id)
+    .eq('sku_id', form.sku_id)
+
+  if (!count || count === 0) {
+    setError('Cannot create claim — no sales logged for this SKU yet.')
+    return
+  }
+
+  setSubmitting(true)
+  // ... rest of your existing submit code
 
     let invoiceUrl = ''
     if (invoiceFile) {
