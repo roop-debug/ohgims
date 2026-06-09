@@ -146,6 +146,7 @@ Deno.serve(async (req) => {
     )
 
   } catch (err) {
+    //test-redeploy
     return new Response(JSON.stringify({ error: String(err) }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
