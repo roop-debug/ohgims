@@ -5,7 +5,6 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-// Web Push encryption helpers
 async function generateVapidHeaders(
   endpoint: string,
   vapidPublicKey: string,
@@ -14,7 +13,7 @@ async function generateVapidHeaders(
 ) {
   const url = new URL(endpoint)
   const audience = `${url.protocol}//${url.host}`
-  const expiration = Math.floor(Date.now() / 1000) + 12 * 3600 // 12 hours
+  const expiration = Math.floor(Date.now() / 1000) + 12 * 3600
 
   const header = { alg: 'ES256', typ: 'JWT' }
   const payload = {
@@ -69,10 +68,14 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const supabaseAdmin = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-    )
+    // Use new key format
+    const publishableKeys = JSON.parse(Deno.env.get('SUPABASE_PUBLISHABLE_KEYS')!)
+    const secretKeys = JSON.parse(Deno.env.get('SUPABASE_SECRET_KEYS')!)
+    const anonKey = publishableKeys.default
+    const serviceRoleKey = secretKeys.default
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!
+
+    const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey)
 
     // Verify caller
     const authHeader = req.headers.get('Authorization')
@@ -83,20 +86,22 @@ Deno.serve(async (req) => {
       })
     }
 
-    const anonClient = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_ANON_KEY')!,
-      { global: { headers: { Authorization: authHeader } } }
-    )
-    const { data: { user } } = await anonClient.auth.getUser()
-    if (!user) {
-      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
-        status: 401,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    // Allow service role calls from other edge functions
+    const isServiceRole = authHeader === `Bearer ${serviceRoleKey}`
+
+    if (!isServiceRole) {
+      const anonClient = createClient(supabaseUrl, anonKey, {
+        global: { headers: { Authorization: authHeader } }
       })
+      const { data: { user } } = await anonClient.auth.getUser()
+      if (!user) {
+        return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+          status: 401,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        })
+      }
     }
 
-    // Parse body
     const { user_id, title, body, url } = await req.json()
 
     if (!user_id || !title || !body) {
@@ -106,17 +111,27 @@ Deno.serve(async (req) => {
       })
     }
 
-    // Get push subscription for target user
+    // Get push subscriptions for target user
     const { data: subscriptions, error: subError } = await supabaseAdmin
       .from('push_subscriptions')
       .select('*')
       .eq('user_id', user_id)
 
+    // Insert in-app notification regardless of push subscription
+    await supabaseAdmin.from('notifications').insert({
+      user_id,
+      title,
+      message: body,
+      url: url ?? null,
+      read: false,
+    }).catch(() => {})
+
+    // If no push subscription, still return success (in-app notification was saved)
     if (subError || !subscriptions?.length) {
-      return new Response(JSON.stringify({ error: 'No push subscription found for user' }), {
-        status: 404,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      })
+      return new Response(
+        JSON.stringify({ success: true, push: false, message: 'In-app notification saved, no push subscription found' }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
     }
 
     const vapidPublicKey = Deno.env.get('VAPID_PUBLIC_KEY')!
@@ -145,7 +160,6 @@ Deno.serve(async (req) => {
         })
 
         if (!res.ok && res.status === 410) {
-          // Subscription expired — clean it up
           await supabaseAdmin
             .from('push_subscriptions')
             .delete()
@@ -156,27 +170,13 @@ Deno.serve(async (req) => {
       })
     )
 
-    // Also insert into notifications table if it exists
-    // (for the NotificationBell in-app display)
-    await supabaseAdmin.from('notifications').insert({
-      user_id,
-      title,
-      body,
-      url: url ?? null,
-      is_read: false,
-    }).then(() => {}).catch(() => {})
-    // silent fail — notifications table is optional
-
     return new Response(
-      JSON.stringify({ success: true, results }),
-      {
-        status: 200,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      }
+      JSON.stringify({ success: true, push: true, results }),
+      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
 
   } catch (err) {
-    return new Response(JSON.stringify({ error: 'Internal server error' }), {
+    return new Response(JSON.stringify({ error: String(err) }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })

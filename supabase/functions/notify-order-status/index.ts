@@ -16,19 +16,20 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
   try {
+    const publishableKeys = JSON.parse(Deno.env.get('SUPABASE_PUBLISHABLE_KEYS')!)
+    const secretKeys = JSON.parse(Deno.env.get('SUPABASE_SECRET_KEYS')!)
+    const anonKey = publishableKeys.default
+    const serviceRoleKey = secretKeys.default
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!
+
     const authHeader = req.headers.get('Authorization')
     if (!authHeader) return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
 
-    const supabaseAdmin = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-    )
+    const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey)
 
-    const anonClient = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_ANON_KEY')!,
-      { global: { headers: { Authorization: authHeader } } }
-    )
+    const anonClient = createClient(supabaseUrl, anonKey, {
+      global: { headers: { Authorization: authHeader } }
+    })
 
     const { data: { user } } = await anonClient.auth.getUser()
     if (!user) return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
@@ -45,7 +46,7 @@ Deno.serve(async (req) => {
     const { data: order } = await supabaseAdmin
       .from('purchase_orders')
       .select('distributor_id')
-      .eq('id', order_id)
+      .eq('po_id', order_id)
       .single()
     if (!order) return new Response(JSON.stringify({ error: 'Order not found' }), { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
 
@@ -56,11 +57,11 @@ Deno.serve(async (req) => {
       .single()
     if (!distProfile) return new Response(JSON.stringify({ error: 'Distributor profile not found' }), { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
 
-    await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/send-push`, {
+    await fetch(`${supabaseUrl}/functions/v1/send-push`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
+        Authorization: `Bearer ${serviceRoleKey}`,
       },
       body: JSON.stringify({
         user_id: distProfile.id,

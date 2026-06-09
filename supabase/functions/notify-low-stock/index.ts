@@ -9,19 +9,18 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
   try {
-    const supabaseAdmin = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-    )
+    const secretKeys = JSON.parse(Deno.env.get('SUPABASE_SECRET_KEYS')!)
+    const serviceRoleKey = secretKeys.default
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!
+
+    const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey)
 
     const { data: lowStockItems } = await supabaseAdmin
       .from('master_inventory')
-      .select('total_stock, skus(name, low_stock_threshold)')
+      .select('total_stock, skus(name)')
+      .lte('total_stock', 10)
 
-    const items = (lowStockItems ?? []).filter((row: any) => {
-      const threshold = row.skus?.low_stock_threshold
-      return threshold !== null && row.total_stock <= threshold
-    })
+    const items = lowStockItems ?? []
 
     if (items.length === 0) {
       return new Response(JSON.stringify({ success: true, message: 'No low stock items' }), {
@@ -49,11 +48,11 @@ Deno.serve(async (req) => {
 
     await Promise.allSettled(
       admins.map((admin) =>
-        fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/send-push`, {
+        fetch(`${supabaseUrl}/functions/v1/send-push`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            Authorization: `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
+            Authorization: `Bearer ${serviceRoleKey}`,
           },
           body: JSON.stringify({
             user_id: admin.id,

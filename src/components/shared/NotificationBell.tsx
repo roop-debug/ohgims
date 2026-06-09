@@ -9,8 +9,7 @@ export default function NotificationBell() {
   const [open, setOpen] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
 
-  const unreadCount = notifications.filter((n) => !n.is_read).length
-
+  const unreadCount = notifications.filter((n) => !n.read).length
   // Fetch notifications on mount
   useEffect(() => {
     if (!user) return
@@ -116,20 +115,20 @@ export default function NotificationBell() {
               <p className="text-sm text-gray-400 text-center py-8">No notifications yet</p>
             ) : (
               notifications.map((n) => (
-                <div
-                  key={n.id}
-                  className={`px-4 py-3 flex gap-3 ${!n.is_read ? 'bg-orange-50' : ''}`}
-                >
-                  <div className="flex-1">
-                    <p className="text-sm font-medium text-gray-900">{n.title}</p>
-                    <p className="text-xs text-gray-500 mt-0.5">{n.body}</p>
-                    <p className="text-xs text-gray-400 mt-1">{timeAgo(n.created_at)}</p>
-                  </div>
-                  {!n.is_read && (
-                    <div className="w-2 h-2 bg-[#eb2030] rounded-full mt-1.5 flex-shrink-0" />
-                  )}
-                </div>
-              ))
+  <div
+    key={n.notification_id}
+    className={`px-4 py-3 flex gap-3 ${!n.read ? 'bg-red-50' : ''}`}
+  >
+    <div className="flex-1">
+      <p className="text-sm font-medium text-gray-900">{n.title}</p>
+      <p className="text-xs text-gray-500 mt-0.5">{n.message}</p>
+      <p className="text-xs text-gray-400 mt-1">{timeAgo(n.created_at)}</p>
+    </div>
+    {!n.read && (
+      <div className="w-2 h-2 bg-[#eb2030] rounded-full mt-1.5 flex-shrink-0" />
+    )}
+  </div>
+)) 
             )}
           </div>
 
