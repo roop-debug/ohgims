@@ -202,7 +202,13 @@ export default function DistributorClaims() {
 
   if (claimError) { setError(claimError.message); setSubmitting(false); return }
 
- const { data: { session } } = await supabase.auth.getSession()
+// Get session first, then log
+const { data: { session } } = await supabase.auth.getSession()
+
+console.log('claim inserted, firing notify-new-claim')
+console.log('url:', `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/notify-new-claim`)
+console.log('session:', session?.access_token?.slice(0, 20))
+
 await fetch(
   `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/notify-new-claim`,
   {
