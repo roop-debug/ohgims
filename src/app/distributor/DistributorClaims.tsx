@@ -357,10 +357,12 @@ await fetch(
               className="flex-1 py-2 text-sm border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
               Cancel
             </button>
-            <button onClick={handleSubmit} disabled={submitting}
-              className="flex-1 py-2 text-sm bg-[#eb2030] text-white rounded-lg hover:bg-[#c4001a] transition-colors disabled:opacity-50">
-              {submitting ? 'Submitting...' : 'Submit Request'}
-            </button>
+            <button 
+  onClick={() => { console.log('button clicked'); handleSubmit() }} 
+  disabled={submitting}
+  className="flex-1 py-2 text-sm bg-[#eb2030] text-white rounded-lg hover:bg-[#c4001a] transition-colors disabled:opacity-50">
+  {submitting ? 'Submitting...' : 'Submit Request'}
+</button>
           </div>
         </div>
       </Modal>
