@@ -22,6 +22,10 @@ interface DataTableProps<T> {
   emptyMessage?: string
 }
 
+// --- UPDATED filter type from today-only boolean to period selector ---
+type Period = 'all' | 'month' | 'year'
+// --- END ---
+
 export default function DataTable<T>({
   columns,
   data,
@@ -36,18 +40,29 @@ export default function DataTable<T>({
 }: DataTableProps<T>) {
   const [globalFilter, setGlobalFilter] = useState('')
   const [sorting, setSorting] = useState<SortingState>([])
-  const [todayOnly, setTodayOnly] = useState(false)
+  // --- UPDATED from boolean to Period ---
+  const [period, setPeriod] = useState<Period>('all')
+  // --- END ---
 
   const today = new Date().toISOString().split('T')[0]
+  // --- ADDED month and year prefixes ---
+  const thisMonth = today.slice(0, 7) // 'YYYY-MM'
+  const thisYear = today.slice(0, 4)  // 'YYYY'
+  // --- END ---
 
-  const filteredData = todayOnly
-    ? data.filter((row) => {
+  // --- UPDATED filter logic to handle month and year ---
+  const filteredData = period === 'all'
+    ? data
+    : data.filter((row) => {
         const r = row as Record<string, unknown>
-        return Object.values(r).some(
-          (v) => typeof v === 'string' && v.startsWith(today)
-        )
+        return Object.values(r).some((v) => {
+          if (typeof v !== 'string') return false
+          if (period === 'month') return v.startsWith(thisMonth)
+          if (period === 'year') return v.startsWith(thisYear)
+          return false
+        })
       })
-    : data
+  // --- END ---
 
   const table = useReactTable({
     data: filteredData,
@@ -82,7 +97,7 @@ export default function DataTable<T>({
     URL.revokeObjectURL(url)
   }
 
-  // ── Toolbar ──────────────────────────────────────────────
+  // --- UPDATED toolbar with This Month / This Year toggles ---
   const toolbar = (
     <div className="flex flex-wrap items-center gap-2 mb-3">
       {searchable && (
@@ -94,16 +109,21 @@ export default function DataTable<T>({
         />
       )}
       {todayToggle && (
-        <button
-          onClick={() => setTodayOnly((v) => !v)}
-          className={`px-3 py-2 rounded-md text-sm border transition-colors ${
-            todayOnly
-              ? 'bg-primary text-white border-primary'
-              : 'border-[#E0E0E0] text-gray-600 hover:bg-gray-50'
-          }`}
-        >
-          Today
-        </button>
+        <div className="flex rounded-md border border-[#E0E0E0] overflow-hidden text-sm">
+          {(['all', 'month', 'year'] as Period[]).map((p) => (
+            <button
+              key={p}
+              onClick={() => setPeriod(p)}
+              className={`px-3 py-2 transition-colors border-r last:border-r-0 border-[#E0E0E0] ${
+                period === p
+                  ? 'bg-primary text-white'
+                  : 'text-gray-600 hover:bg-gray-50'
+              }`}
+            >
+              {p === 'all' ? 'All' : p === 'month' ? 'This Month' : 'This Year'}
+            </button>
+          ))}
+        </div>
       )}
       {exportable && (
         <button
@@ -115,8 +135,8 @@ export default function DataTable<T>({
       )}
     </div>
   )
+  // --- END ---
 
-  // ── Loading skeleton ──────────────────────────────────────
   if (loading) {
     return (
       <div>
@@ -130,7 +150,6 @@ export default function DataTable<T>({
     )
   }
 
-  // ── Empty state ───────────────────────────────────────────
   const isEmpty = table.getFilteredRowModel().rows.length === 0
 
   return (

@@ -53,54 +53,59 @@ export default function AdminDistributors() {
     fetchDistributors()
   }, [])
 
-  async function fetchDistributors() {
-    setLoading(true)
+  // --- UPDATED fetchDistributors to normalize units ---
+async function fetchDistributors() {
+  setLoading(true)
 
-    const { data: distributors } = await supabase
-      .from('distributors')
-      .select('*')
-      .order('created_at', { ascending: false })
+  const { data: distributors } = await supabase
+    .from('distributors')
+    .select('*')
+    .order('created_at', { ascending: false })
 
-    if (!distributors) { setLoading(false); return }
+  if (!distributors) { setLoading(false); return }
 
-    // Fetch today's sales and orders for each distributor
-    const enriched = await Promise.all(
-      distributors.map(async (d) => {
-        const [
-          { data: salesData },
-          { data: ordersData },
-        ] = await Promise.all([
-          supabase
-            .from('sales_logs')
-            .select('units_sold, total_revenue')
-            .eq('distributor_id', d.distributor_id)
-            .eq('date', today),
+  const enriched = await Promise.all(
+    distributors.map(async (d) => {
+      const [
+        { data: salesData },
+        { data: invData },
+      ] = await Promise.all([
+        supabase
+          .from('sales_logs')
+          .select('units_sold, total_revenue')
+          .eq('distributor_id', d.distributor_id)
+          .eq('date', today),
 
-          supabase
-            .from('po_line_items')
-            .select('quantity, price, purchase_orders!inner(distributor_id, created_at)')
-            .eq('purchase_orders.distributor_id', d.distributor_id)
-            .gte('purchase_orders.created_at', `${today}T00:00:00`)
-            .lte('purchase_orders.created_at', `${today}T23:59:59`),
-        ])
+        supabase
+          .from('distributor_inventory')
+          .select('stock_in, skus(pcs_per_unit)')
+          .eq('distributor_id', d.distributor_id),
+      ])
 
-        const sold = salesData?.reduce((sum, s) => sum + s.units_sold, 0) ?? 0
-        const revenue = salesData?.reduce((sum, s) => sum + s.total_revenue, 0) ?? 0
-        const purchased = ordersData?.reduce((sum, o) => sum + o.quantity, 0) ?? 0
+      const soldPcs = salesData?.reduce((sum, s) => sum + s.units_sold, 0) ?? 0
+      const revenue = salesData?.reduce((sum, s) => sum + s.total_revenue, 0) ?? 0
 
-        return {
-          ...d,
-          purchased,
-          sold,
-          total: purchased - sold,
-          revenue,
-        }
-      })
-    )
+      // --- Convert stock_in (boxes) to pcs using pcs_per_unit ---
+      const purchasedPcs = invData?.reduce((sum, r: any) => {
+        const ppu = r.skus?.pcs_per_unit ?? 1
+        return sum + (r.stock_in * ppu)
+      }, 0) ?? 0
+      // --- END ---
 
-    setData(enriched)
-    setLoading(false)
-  }
+      return {
+        ...d,
+        purchased: purchasedPcs,
+        sold: soldPcs,
+        total: purchasedPcs - soldPcs,
+        revenue,
+      }
+    })
+  )
+
+  setData(enriched)
+  setLoading(false)
+}
+// --- END ---
 
   function handleChange(key: keyof typeof initialForm, value: string) {
     setForm((prev) => ({ ...prev, [key]: value }))
