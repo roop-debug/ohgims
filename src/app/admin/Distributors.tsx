@@ -187,8 +187,8 @@ async function fetchDistributors() {
         {/* KPI Cards */}
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
           <KPICard label="No. of Distributors" value={loading ? '—' : totalDistributors} />
-          <KPICard label="Total Units Sold" value={loading ? '—' : totalUnitsSold} />
-          <KPICard label="Total Units Bought" value={loading ? '—' : totalUnitsBought} />
+          <KPICard label="Total pcs Sold" value={loading ? '—' : totalUnitsSold} />
+          <KPICard label="Total pcs Bought" value={loading ? '—' : totalUnitsBought} />
         </div>
 
         {/* Header */}
