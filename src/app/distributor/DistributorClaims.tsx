@@ -125,7 +125,9 @@ export default function DistributorClaims() {
   }
 
   async function handleSubmit() {
+    console.log('handleSubmit called')
   setError(null)
+
 
   if (!form.sku_id || !form.units || !form.claim_type) {
     setError('Please fill all required fields')
