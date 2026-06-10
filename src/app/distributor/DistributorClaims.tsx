@@ -171,6 +171,16 @@ export default function DistributorClaims() {
       setError(`Cannot claim ${requested} units — only ${available} available (${totalSold} sold, ${totalClaimed} already claimed).`)
       return
     }
+    console.log('totalSold:', totalSold, 'totalClaimed:', totalClaimed, 'available:', available, 'requested:', requested)
+  
+  if (totalSold === 0) {
+    setError('Cannot create claim — no sales logged for this SKU yet.')
+    return
+  }
+  if (requested > available) {
+    setError(`Cannot claim ${requested} units...`)
+    return
+  }
   }
   // --- END ---
 
