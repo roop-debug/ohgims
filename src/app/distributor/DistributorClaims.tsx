@@ -126,8 +126,16 @@ export default function DistributorClaims() {
 
   async function handleSubmit() {
   setError(null)
+
+  // Validate required fields
   if (!form.sku_id || !form.selling_rate || !form.units || !form.claim_type) {
     setError('Please fill all required fields')
+    return
+  }
+
+  // Invoice is compulsory
+  if (!invoiceFile) {
+    setError('Please upload an invoice')
     return
   }
 
@@ -144,42 +152,40 @@ export default function DistributorClaims() {
   }
 
   setSubmitting(true)
-  // ... rest of your existing submit code
 
-    let invoiceUrl = ''
-    if (invoiceFile) {
-      const filePath = `${profile?.id}/${Date.now()}_${invoiceFile.name}`
-      const { error: uploadError } = await supabase.storage
-        .from('claim-invoices')
-        .upload(filePath, invoiceFile)
-      if (uploadError) { setError(uploadError.message); setSubmitting(false); return }
-      invoiceUrl = filePath
-    }
+  // Upload invoice
+  const filePath = `${profile?.id}/${Date.now()}_${invoiceFile.name}`
+  const { error: uploadError } = await supabase.storage
+    .from('claim-invoices')
+    .upload(filePath, invoiceFile)
+  if (uploadError) { setError(uploadError.message); setSubmitting(false); return }
+  const invoiceUrl = filePath
 
-    const claimId = `CLM-${new Date().getFullYear()}-${Date.now().toString().slice(-5)}`
+  // Insert claim
+  const claimId = `CLM-${new Date().getFullYear()}-${Date.now().toString().slice(-5)}`
 
-    const { error: claimError } = await supabase
-      .from('claims')
-      .insert({
-        claim_id: claimId,
-        distributor_id: profile?.distributor_id,
-        sku_id: form.sku_id,
-        claim_type: form.claim_type,
-        rate: parseFloat(form.rate) || 0,
-        selling_rate: parseFloat(form.selling_rate),
-        units: parseInt(form.units),
-        reimbursement_amt: parseFloat(form.reimbursement_amt) || 0,
-        reason: form.reason,
-        invoice_url: invoiceUrl,
-        status: 'pending',
-      })
+  const { error: claimError } = await supabase
+    .from('claims')
+    .insert({
+      claim_id: claimId,
+      distributor_id: profile?.distributor_id,
+      sku_id: form.sku_id,
+      claim_type: form.claim_type,
+      rate: parseFloat(form.rate) || 0,
+      selling_rate: parseFloat(form.selling_rate),
+      units: parseInt(form.units),
+      reimbursement_amt: parseFloat(form.reimbursement_amt) || 0,
+      reason: form.reason,
+      invoice_url: invoiceUrl,
+      status: 'pending',
+    })
 
-    if (claimError) { setError(claimError.message); setSubmitting(false); return }
+  if (claimError) { setError(claimError.message); setSubmitting(false); return }
 
-    setSubmitting(false)
-    handleCloseCreate()
-    fetchClaims()
-  }
+  setSubmitting(false)
+  handleCloseCreate()
+  fetchClaims()
+}
 
   const columns: ColumnDef<ClaimRow>[] = [
     { header: 'Sr No.', cell: ({ row }) => row.index + 1 },
