@@ -122,6 +122,7 @@ export default function DistributorClaims() {
     setForm(initialForm)
     setError(null)
     setInvoiceFile(null)
+    setSubmitting(false)
   }
 
   async function handleSubmit() {
