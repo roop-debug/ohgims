@@ -140,17 +140,36 @@ export default function DistributorClaims() {
   }
 
   // Check if distributor has any sales logged for this SKU
-  const { count } = await supabase
+  // Check sales vs existing claims for this SKU
+const [{ data: salesData }, { data: claimsData }] = await Promise.all([
+  supabase
     .from('sales_logs')
-    .select('*', { count: 'exact', head: true })
+    .select('units_sold')
+    .eq('distributor_id', profile?.distributor_id)
+    .eq('sku_id', form.sku_id),
+
+  supabase
+    .from('claims')
+    .select('units')
     .eq('distributor_id', profile?.distributor_id)
     .eq('sku_id', form.sku_id)
+    .in('status', ['pending', 'approved']),
+])
 
-  if (!count || count === 0) {
-    setError('Cannot create claim — no sales logged for this SKU yet.')
-    return
-  }
+const totalSold = salesData?.reduce((sum, r) => sum + r.units_sold, 0) ?? 0
+const totalClaimed = claimsData?.reduce((sum, r) => sum + r.units, 0) ?? 0
+const availableToCliam = totalSold - totalClaimed
+const requestedUnits = parseInt(form.units) || 0
 
+if (totalSold === 0) {
+  setError('Cannot create claim — no sales logged for this SKU yet.')
+  return
+}
+
+if (requestedUnits > availableToCliam) {
+  setError(`Cannot claim ${requestedUnits} units — only ${availableToCliam} units available (${totalSold} sold, ${totalClaimed} already claimed).`)
+  return
+}
   setSubmitting(true)
 
   // Upload invoice
