@@ -127,60 +127,61 @@ export default function DistributorClaims() {
   async function handleSubmit() {
   setError(null)
 
-  // Validate required fields
-  if (!form.sku_id || !form.selling_rate || !form.units || !form.claim_type) {
+  if (!form.sku_id || !form.units || !form.claim_type) {
     setError('Please fill all required fields')
     return
   }
 
-  // Invoice is compulsory
   if (!invoiceFile) {
     setError('Please upload an invoice')
     return
   }
 
-  // Check if distributor has any sales logged for this SKU
-  // Check sales vs existing claims for this SKU
-const [{ data: salesData }, { data: claimsData }] = await Promise.all([
-  supabase
-    .from('sales_logs')
-    .select('units_sold')
-    .eq('distributor_id', profile?.distributor_id)
-    .eq('sku_id', form.sku_id),
+  // --- UPDATED: only run sales check for Price Difference claims ---
+  if (form.claim_type === 'Price Difference') {
+    if (!form.selling_rate) {
+      setError('Please fill all required fields')
+      return
+    }
 
-  supabase
-    .from('claims')
-    .select('units')
-    .eq('distributor_id', profile?.distributor_id)
-    .eq('sku_id', form.sku_id)
-    .in('status', ['pending', 'approved']),
-])
+    const [{ data: salesData }, { data: claimsData }] = await Promise.all([
+      supabase
+        .from('sales_logs')
+        .select('units_sold')
+        .eq('distributor_id', profile?.distributor_id)
+        .eq('sku_id', form.sku_id),
+      supabase
+        .from('claims')
+        .select('units')
+        .eq('distributor_id', profile?.distributor_id)
+        .eq('sku_id', form.sku_id)
+        .in('status', ['pending', 'approved']),
+    ])
 
-const totalSold = salesData?.reduce((sum, r) => sum + r.units_sold, 0) ?? 0
-const totalClaimed = claimsData?.reduce((sum, r) => sum + r.units, 0) ?? 0
-const availableToCliam = totalSold - totalClaimed
-const requestedUnits = parseInt(form.units) || 0
+    const totalSold = salesData?.reduce((sum, r) => sum + r.units_sold, 0) ?? 0
+    const totalClaimed = claimsData?.reduce((sum, r) => sum + r.units, 0) ?? 0
+    const available = totalSold - totalClaimed
+    const requested = parseInt(form.units) || 0
 
-if (totalSold === 0) {
-  setError('Cannot create claim — no sales logged for this SKU yet.')
-  return
-}
+    if (totalSold === 0) {
+      setError('Cannot create claim — no sales logged for this SKU yet.')
+      return
+    }
+    if (requested > available) {
+      setError(`Cannot claim ${requested} units — only ${available} available (${totalSold} sold, ${totalClaimed} already claimed).`)
+      return
+    }
+  }
+  // --- END ---
 
-if (requestedUnits > availableToCliam) {
-  setError(`Cannot claim ${requestedUnits} units — only ${availableToCliam} units available (${totalSold} sold, ${totalClaimed} already claimed).`)
-  return
-}
   setSubmitting(true)
 
-  // Upload invoice
   const filePath = `${profile?.id}/${Date.now()}_${invoiceFile.name}`
   const { error: uploadError } = await supabase.storage
     .from('claim-invoices')
     .upload(filePath, invoiceFile)
   if (uploadError) { setError(uploadError.message); setSubmitting(false); return }
-  const invoiceUrl = filePath
 
-  // Insert claim
   const claimId = `CLM-${new Date().getFullYear()}-${Date.now().toString().slice(-5)}`
 
   const { error: claimError } = await supabase
@@ -191,15 +192,33 @@ if (requestedUnits > availableToCliam) {
       sku_id: form.sku_id,
       claim_type: form.claim_type,
       rate: parseFloat(form.rate) || 0,
-      selling_rate: parseFloat(form.selling_rate),
+      selling_rate: parseFloat(form.selling_rate) || 0,
       units: parseInt(form.units),
       reimbursement_amt: parseFloat(form.reimbursement_amt) || 0,
       reason: form.reason,
-      invoice_url: invoiceUrl,
+      invoice_url: filePath,
       status: 'pending',
     })
 
   if (claimError) { setError(claimError.message); setSubmitting(false); return }
+
+  // --- ADDED new claim notification to admin ---
+  const { data: { session } } = await supabase.auth.getSession()
+  await fetch(
+    `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/notify-new-claim`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${session?.access_token}`,
+      },
+      body: JSON.stringify({
+        claim_id: claimId,
+        distributor_id: profile?.distributor_id,
+      }),
+    }
+  )
+  // --- END ---
 
   setSubmitting(false)
   handleCloseCreate()
