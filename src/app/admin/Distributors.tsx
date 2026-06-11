@@ -239,23 +239,20 @@ export default function AdminDistributors() {
         }
       }
 
-      // Step 6 — Initialize distributor inventory for all SKUs
-      const { data: allSkus } = await supabase.from('skus').select('sku_id')
-      if (allSkus) {
-        const distInvRows = allSkus.map((s: any) => {
-          const ordered = selectedItems.find(i => i.sku_id === s.sku_id)
-          return {
-            distributor_id: distributorId,
-            sku_id: s.sku_id,
-            date: today,
-            stock_in: ordered?.quantity ?? 0,
-            stock_out: 0,
-            total_stock: ordered?.quantity ?? 0,
-            status: (ordered?.quantity ?? 0) > 0 ? 'In Stock' : 'Out of Stock',
-          }
-        })
-        await supabase.from('distributor_inventory').insert(distInvRows)
-      }
+      // Step 6 — Initialize distributor inventory for all SKUs (all at 0, updated on delivery)
+const { data: allSkus } = await supabase.from('skus').select('sku_id')
+if (allSkus) {
+  const distInvRows = allSkus.map((s: any) => ({
+    distributor_id: distributorId,
+    sku_id: s.sku_id,
+    date: today,
+    stock_in: 0,
+    stock_out: 0,
+    total_stock: 0,
+    status: 'Out of Stock',
+  }))
+  await supabase.from('distributor_inventory').insert(distInvRows)
+}
 
       // Step 7 — Notify admins of new order
       await supabase.functions.invoke('notify-new-order', {
