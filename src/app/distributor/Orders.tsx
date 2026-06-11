@@ -201,14 +201,23 @@ export default function DistributorOrders() {
             <hr className="border-gray-100" />
 
             <div>
-              <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">Line Items</p>
-              <DataTable
-                columns={itemColumns}
-                data={orderItems}
-                searchable={false}
-                emptyMessage="No items in this order"
-              />
-            </div>
+  <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">Line Items</p>
+  <DataTable
+    columns={itemColumns}
+    data={orderItems}
+    searchable={false}
+    emptyMessage="No items in this order"
+  />
+  {/* --- ADDED grand total --- */}
+  {orderItems.length > 0 && (
+    <div className="flex justify-end border-t border-gray-100 pt-3 mt-1">
+      <p className="text-sm font-semibold text-gray-900">
+        Grand Total: ₹{orderItems.reduce((sum, item) => sum + item.price, 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+      </p>
+    </div>
+  )}
+  {/* --- END --- */}
+</div>
           </div>
         )}
       </Modal>
