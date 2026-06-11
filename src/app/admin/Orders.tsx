@@ -32,6 +32,11 @@ export default function AdminOrders() {
   const [data, setData] = useState<OrderRow[]>([])
   const [loading, setLoading] = useState(true)
 
+  // Cancel modal state
+  const [cancelModalOpen, setCancelModalOpen] = useState(false)
+  const [cancelReason, setCancelReason] = useState('')
+  const [cancelling, setCancelling] = useState(false)
+
   useEffect(() => { fetchOrders() }, [])
 
   async function fetchOrders() {
@@ -86,73 +91,79 @@ export default function AdminOrders() {
   }
 
   async function handleApprove() {
-  if (!selectedOrder) return
-
-  // Check if sufficient stock exists for all line items
-  const insufficientItems: string[] = []
-
-  for (const item of orderItems) {
-    const { data: inv } = await supabase
-      .from('master_inventory')
-      .select('total_stock')
-      .eq('sku_id', item.sku)
-      .order('date', { ascending: false })
-      .limit(1)
-      .maybeSingle()
-
-    const available = inv?.total_stock ?? 0
-    if (available < item.quantity) {
-      insufficientItems.push(`${item.item_name} (need ${item.quantity}, have ${available})`)
-    }
-  }
-
-  if (insufficientItems.length > 0) {
-    alert(`Cannot approve — insufficient stock:\n${insufficientItems.join('\n')}`)
-    return
-  }
-
-  const { error } = await supabase
-    .from('purchase_orders')
-    .update({ status: 'approved' })
-    .eq('po_id', selectedOrder.id)
-
-  if (error) { console.error(error); return }
-
-  const { error: dispatchError } = await supabase
-    .from('dispatches')
-    .insert({
-      po_id: selectedOrder.id,
-      distributor_id: selectedOrder.distributor_id,
-      dispatched_at: new Date().toISOString(),
-      eta: null,
-      status: 'pending',
-    })
-
-  if (dispatchError) { console.error(dispatchError); return }
-
-  await supabase.functions.invoke('notify-order-status', {
-    body: { order_id: selectedOrder.id, new_status: 'approved' }
-  })
-
-  handleClose()
-  fetchOrders()
-}
-
-  async function handleCancel() {
     if (!selectedOrder) return
+
+    const insufficientItems: string[] = []
+
+    for (const item of orderItems) {
+      const { data: inv } = await supabase
+        .from('master_inventory')
+        .select('total_stock')
+        .eq('sku_id', item.sku)
+        .order('date', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+      const available = inv?.total_stock ?? 0
+      if (available < item.quantity) {
+        insufficientItems.push(`${item.item_name} (need ${item.quantity}, have ${available})`)
+      }
+    }
+
+    if (insufficientItems.length > 0) {
+      alert(`Cannot approve — insufficient stock:\n${insufficientItems.join('\n')}`)
+      return
+    }
 
     const { error } = await supabase
       .from('purchase_orders')
-      .update({ status: 'cancelled' })
+      .update({ status: 'approved' })
       .eq('po_id', selectedOrder.id)
 
     if (error) { console.error(error); return }
 
-    // Notify distributor
+    const { error: dispatchError } = await supabase
+      .from('dispatches')
+      .insert({
+        po_id: selectedOrder.id,
+        distributor_id: selectedOrder.distributor_id,
+        dispatched_at: new Date().toISOString(),
+        eta: null,
+        status: 'pending',
+      })
+
+    if (dispatchError) { console.error(dispatchError); return }
+
+    await supabase.functions.invoke('notify-order-status', {
+      body: { order_id: selectedOrder.id, new_status: 'approved' }
+    })
+
+    handleClose()
+    fetchOrders()
+  }
+
+  function openCancelModal() {
+    setCancelReason('')
+    setCancelModalOpen(true)
+  }
+
+  async function handleCancel() {
+    if (!selectedOrder || !cancelReason.trim()) return
+    setCancelling(true)
+
+    const { error } = await supabase
+      .from('purchase_orders')
+      .update({ status: 'cancelled', cancellation_reason: cancelReason.trim() })
+      .eq('po_id', selectedOrder.id)
+
+    if (error) { console.error(error); setCancelling(false); return }
+
     await supabase.functions.invoke('notify-order-status', {
       body: { order_id: selectedOrder.id, new_status: 'cancelled' }
     })
 
+    setCancelModalOpen(false)
+    setCancelling(false)
     handleClose()
     fetchOrders()
   }
@@ -208,6 +219,7 @@ export default function AdminOrders() {
         />
       </div>
 
+      {/* Order detail modal */}
       <Modal
         open={modalOpen}
         title={selectedOrder ? `Order — ${selectedOrder.po_no}` : 'Order Details'}
@@ -233,28 +245,26 @@ export default function AdminOrders() {
             <hr className="border-gray-100" />
 
             <div>
-  <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">Line Items</p>
-  <DataTable
-    columns={itemColumns}
-    data={orderItems}
-    searchable={false}
-    emptyMessage="No items in this order"
-  />
-  {/* --- ADDED grand total --- */}
-  {orderItems.length > 0 && (
-    <div className="flex justify-end border-t border-gray-100 pt-3 mt-1">
-      <p className="text-sm font-semibold text-gray-900">
-        Grand Total: ₹{orderItems.reduce((sum, item) => sum + item.price, 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}
-      </p>
-    </div>
-  )}
-  {/* --- END --- */}
-</div>
+              <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">Line Items</p>
+              <DataTable
+                columns={itemColumns}
+                data={orderItems}
+                searchable={false}
+                emptyMessage="No items in this order"
+              />
+              {orderItems.length > 0 && (
+                <div className="flex justify-end border-t border-gray-100 pt-3 mt-1">
+                  <p className="text-sm font-semibold text-gray-900">
+                    Grand Total: ₹{orderItems.reduce((sum, item) => sum + item.price, 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+                  </p>
+                </div>
+              )}
+            </div>
 
-{selectedOrder.status === 'pending' && (
+            {selectedOrder.status === 'pending' && (
               <div className="flex gap-3 mt-2">
                 <button
-                  onClick={handleCancel}
+                  onClick={openCancelModal}
                   className="flex-1 py-2 text-sm border border-gray-200 text-gray-600 rounded-lg hover:bg-gray-50 transition-colors"
                 >
                   Cancel Order
@@ -279,6 +289,42 @@ export default function AdminOrders() {
             )}
           </div>
         )}
+      </Modal>
+
+      {/* Cancel reason modal */}
+      <Modal
+        open={cancelModalOpen}
+        title="Cancel Order"
+        onClose={() => setCancelModalOpen(false)}
+      >
+        <div className="flex flex-col gap-4">
+          <p className="text-sm text-gray-600">
+            Please provide a reason for cancelling{' '}
+            <span className="font-medium text-gray-900">{selectedOrder?.po_no}</span>.
+          </p>
+          <textarea
+            value={cancelReason}
+            onChange={e => setCancelReason(e.target.value)}
+            placeholder="Enter cancellation reason..."
+            rows={3}
+            className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-[#eb2030]/30 focus:border-[#eb2030]"
+          />
+          <div className="flex gap-3">
+            <button
+              onClick={() => setCancelModalOpen(false)}
+              className="flex-1 py-2 text-sm border border-gray-200 text-gray-600 rounded-lg hover:bg-gray-50 transition-colors"
+            >
+              Go Back
+            </button>
+            <button
+              onClick={handleCancel}
+              disabled={!cancelReason.trim() || cancelling}
+              className="flex-1 py-2 text-sm bg-[#eb2030] text-white rounded-lg hover:bg-[#c4001a] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {cancelling ? 'Cancelling...' : 'Confirm Cancel'}
+            </button>
+          </div>
+        </div>
       </Modal>
     </AppLayout>
   )

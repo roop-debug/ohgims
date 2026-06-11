@@ -5,10 +5,8 @@ import DataTable from '../../components/shared/DataTable'
 import Modal from '../../components/shared/Modal'
 import StatusBadge from '../../components/shared/StatusBadge'
 import type { ColumnDef } from '@tanstack/react-table'
-// --- ADDED ---
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
-// --- END ---
 
 interface OrderRow {
   id: string
@@ -32,12 +30,16 @@ export default function DistributorOrders() {
   const { profile } = useAuth()
   const navigate = useNavigate()
 
-  // --- ADDED data state and fetch ---
   const [data, setData] = useState<OrderRow[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedOrder, setSelectedOrder] = useState<OrderRow | null>(null)
   const [orderItems, setOrderItems] = useState<OrderItem[]>([])
   const [modalOpen, setModalOpen] = useState(false)
+
+  // Cancel modal state
+  const [cancelModalOpen, setCancelModalOpen] = useState(false)
+  const [cancelReason, setCancelReason] = useState('')
+  const [cancelling, setCancelling] = useState(false)
 
   useEffect(() => {
     if (profile?.distributor_id) fetchOrders()
@@ -83,6 +85,7 @@ export default function DistributorOrders() {
 
   async function handleRowClick(row: OrderRow) {
     setSelectedOrder(row)
+    setOrderItems([])
     await fetchOrderItems(row.id)
     setModalOpen(true)
   }
@@ -92,7 +95,32 @@ export default function DistributorOrders() {
     setSelectedOrder(null)
     setOrderItems([])
   }
-  // --- END ---
+
+  function openCancelModal() {
+    setCancelReason('')
+    setCancelModalOpen(true)
+  }
+
+  async function handleCancel() {
+    if (!selectedOrder || !cancelReason.trim()) return
+    setCancelling(true)
+
+    const { error } = await supabase
+      .from('purchase_orders')
+      .update({ status: 'cancelled', cancellation_reason: cancelReason.trim() })
+      .eq('po_id', selectedOrder.id)
+
+    if (error) { console.error(error); setCancelling(false); return }
+
+    await supabase.functions.invoke('notify-order-status', {
+      body: { order_id: selectedOrder.id, new_status: 'cancelled' }
+    })
+
+    setCancelModalOpen(false)
+    setCancelling(false)
+    handleClose()
+    fetchOrders()
+  }
 
   const columns: ColumnDef<OrderRow>[] = [
     { header: 'Sr No.', cell: ({ row }) => row.index + 1 },
@@ -168,6 +196,7 @@ export default function DistributorOrders() {
         </div>
       </div>
 
+      {/* Order detail modal */}
       <Modal
         open={modalOpen}
         title={selectedOrder ? `Order — ${selectedOrder.po_no}` : 'Order Details'}
@@ -201,25 +230,70 @@ export default function DistributorOrders() {
             <hr className="border-gray-100" />
 
             <div>
-  <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">Line Items</p>
-  <DataTable
-    columns={itemColumns}
-    data={orderItems}
-    searchable={false}
-    emptyMessage="No items in this order"
-  />
-  {/* --- ADDED grand total --- */}
-  {orderItems.length > 0 && (
-    <div className="flex justify-end border-t border-gray-100 pt-3 mt-1">
-      <p className="text-sm font-semibold text-gray-900">
-        Grand Total: ₹{orderItems.reduce((sum, item) => sum + item.price, 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}
-      </p>
-    </div>
-  )}
-  {/* --- END --- */}
-</div>
+              <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">Line Items</p>
+              <DataTable
+                columns={itemColumns}
+                data={orderItems}
+                searchable={false}
+                emptyMessage="No items in this order"
+              />
+              {orderItems.length > 0 && (
+                <div className="flex justify-end border-t border-gray-100 pt-3 mt-1">
+                  <p className="text-sm font-semibold text-gray-900">
+                    Grand Total: ₹{orderItems.reduce((sum, item) => sum + item.price, 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {selectedOrder.status === 'pending' && (
+              <div className="flex mt-2">
+                <button
+                  onClick={openCancelModal}
+                  className="flex-1 py-2 text-sm border border-gray-200 text-gray-600 rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  Cancel Order
+                </button>
+              </div>
+            )}
           </div>
         )}
+      </Modal>
+
+      {/* Cancel reason modal */}
+      <Modal
+        open={cancelModalOpen}
+        title="Cancel Order"
+        onClose={() => setCancelModalOpen(false)}
+      >
+        <div className="flex flex-col gap-4">
+          <p className="text-sm text-gray-600">
+            Please provide a reason for cancelling{' '}
+            <span className="font-medium text-gray-900">{selectedOrder?.po_no}</span>.
+          </p>
+          <textarea
+            value={cancelReason}
+            onChange={e => setCancelReason(e.target.value)}
+            placeholder="Enter cancellation reason..."
+            rows={3}
+            className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-[#eb2030]/30 focus:border-[#eb2030]"
+          />
+          <div className="flex gap-3">
+            <button
+              onClick={() => setCancelModalOpen(false)}
+              className="flex-1 py-2 text-sm border border-gray-200 text-gray-600 rounded-lg hover:bg-gray-50 transition-colors"
+            >
+              Go Back
+            </button>
+            <button
+              onClick={handleCancel}
+              disabled={!cancelReason.trim() || cancelling}
+              className="flex-1 py-2 text-sm bg-[#eb2030] text-white rounded-lg hover:bg-[#c4001a] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {cancelling ? 'Cancelling...' : 'Confirm Cancel'}
+            </button>
+          </div>
+        </div>
       </Modal>
     </AppLayout>
   )
