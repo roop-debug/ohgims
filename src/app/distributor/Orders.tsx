@@ -16,6 +16,7 @@ interface OrderRow {
   eta: string | null
   dispatch_status: 'pending' | 'in_transit' | 'delivered' | null
   dispatch_id: string | null
+  cancellation_reason: string | null
 }
 
 interface OrderItem {
@@ -49,7 +50,7 @@ export default function DistributorOrders() {
   async function fetchOrders() {
     const { data, error } = await supabase
       .from('purchase_orders')
-      .select('po_id, created_at, status, eta, dispatches(dispatch_id, status)')
+      .select('po_id, created_at, status, eta, cancellation_reason, dispatches(dispatch_id, status)')
       .eq('distributor_id', profile?.distributor_id)
       .order('created_at', { ascending: false })
 
@@ -62,6 +63,7 @@ export default function DistributorOrders() {
         eta: row.eta,
         dispatch_status: row.dispatches?.[0]?.status ?? null,
         dispatch_id: row.dispatches?.[0]?.dispatch_id ?? null,
+        cancellation_reason: row.cancellation_reason ?? null,
       })))
     }
     setLoading(false)
@@ -110,7 +112,7 @@ export default function DistributorOrders() {
 
     const { dispatch_id, dispatch_status } = selectedOrder
 
-    // Delete the dispatch if it exists and is still pending (no stock has moved)
+    // Delete dispatch if still pending (no stock has moved)
     if (dispatch_id && dispatch_status === 'pending') {
       const { error: dispatchError } = await supabase
         .from('dispatches')
@@ -290,9 +292,12 @@ export default function DistributorOrders() {
               </p>
             )}
             {selectedOrder.status === 'cancelled' && (
-              <p className="text-sm text-gray-400 text-center mt-2">
-                Order cancelled.
-              </p>
+              <div className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-3 mt-2">
+                <p className="text-xs text-gray-500 mb-1">Cancellation Reason</p>
+                <p className="text-sm text-gray-800">
+                  {selectedOrder.cancellation_reason || '—'}
+                </p>
+              </div>
             )}
           </div>
         )}
