@@ -29,16 +29,24 @@ interface SidebarProps {
 }
 
 export default function Sidebar({ onNavigate }: SidebarProps) {
-  const { isAdmin, profile } = useAuth()
-  
+  const { isAdmin, profile, unreadNotifications } = useAuth()
   const navItems = isAdmin ? adminNavItems : distributorNavItems
 
-  // --- UPDATED handleLogout to use window.location for clean redirect ---
+  // [NOTIFY] Check if a nav item has any unread notifications pointing to it
+  // Matches by prefix so '/admin/orders/123' dots the '/admin/orders' nav item
+  // Dashboard uses exact match only to avoid matching everything under '/admin'
+  function navItemHasDot(itemPath: string): boolean {
+    const isDashboard = itemPath === '/admin' || itemPath === '/distributor'
+    return unreadNotifications.some((n) => {
+      if (!n.url) return false
+      return isDashboard ? n.url === itemPath : n.url.startsWith(itemPath)
+    })
+  }
+
   async function handleLogout() {
     await supabase.auth.signOut()
     window.location.href = '/login'
   }
-  // --- END ---
 
   return (
     <div className="flex flex-col h-full w-full bg-white border-r border-gray-200">
@@ -58,7 +66,7 @@ export default function Sidebar({ onNavigate }: SidebarProps) {
             end={item.path === '/admin' || item.path === '/distributor'}
             onClick={onNavigate}
             className={({ isActive }) =>
-              `px-3 py-2 rounded-lg text-sm transition-colors ${
+              `relative px-3 py-2 rounded-lg text-sm transition-colors ${
                 isActive
                   ? 'bg-gray-100 text-gray-900 font-medium'
                   : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
@@ -66,11 +74,14 @@ export default function Sidebar({ onNavigate }: SidebarProps) {
             }
           >
             {item.label}
+            {/* [NOTIFY] Alert dot — shown when this nav item has unread notifications */}
+            {navItemHasDot(item.path) && (
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 w-2 h-2 bg-[#eb2030] rounded-full" />
+            )}
           </NavLink>
         ))}
       </nav>
 
-      {/* --- UPDATED bottom section with user info + sign out --- */}
       <div className="px-3 py-4 border-t border-gray-100 flex flex-col gap-1">
         <div className="px-3 py-2">
           <p className="text-xs font-medium text-gray-900 truncate">
@@ -87,7 +98,6 @@ export default function Sidebar({ onNavigate }: SidebarProps) {
           Sign out
         </button>
       </div>
-      {/* --- END --- */}
 
     </div>
   )
