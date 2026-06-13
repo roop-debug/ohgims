@@ -150,7 +150,7 @@ export default function DistributorOrders() {
     {
       header: 'PO No.',
       accessorKey: 'po_no',
-      cell: ({ getValue, row }) => (
+      cell: ({ getValue}) => (
         <span
           className="text-[#eb2030] font-medium underline underline-offset-2 cursor-pointer hover:text-[#c4001a]"
           onClick={e => {
