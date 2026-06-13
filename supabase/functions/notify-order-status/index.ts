@@ -46,20 +46,34 @@ Deno.serve(async (req) => {
     const message = STATUS_MESSAGES[new_status]
     if (!message) return new Response(JSON.stringify({ error: `Unknown status: ${new_status}` }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
 
+    // Fetch order with po_id for use in notification URLs
     const { data: order } = await supabaseAdmin
       .from('purchase_orders')
-      .select('distributor_id')
+      .select('distributor_id, po_id')
       .eq('po_id', order_id)
       .single()
     if (!order) return new Response(JSON.stringify({ error: 'Order not found' }), { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
 
-    const { data: distProfile } = await supabaseAdmin
-      .from('profiles')
-      .select('id')
+    // Fetch distributor's user_id from distributors table directly
+    const { data: distributor } = await supabaseAdmin
+      .from('distributors')
+      .select('user_id')
       .eq('distributor_id', order.distributor_id)
       .single()
-    if (!distProfile) return new Response(JSON.stringify({ error: 'Distributor profile not found' }), { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+    if (!distributor) return new Response(JSON.stringify({ error: 'Distributor not found' }), { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
 
+    // [NOTIFY] Insert in-app notification for the distributor
+    await supabaseAdmin
+      .from('notifications')
+      .insert({
+        user_id: distributor.user_id,
+        title: message.title,
+        message: message.body,
+        url: `/distributor/orders/${order.po_id}`,
+        read: false,
+      })
+
+    // Send push notification to distributor (existing behavior)
     await fetch(`${supabaseUrl}/functions/v1/send-push`, {
       method: 'POST',
       headers: {
@@ -67,12 +81,33 @@ Deno.serve(async (req) => {
         Authorization: `Bearer ${serviceRoleKey}`,
       },
       body: JSON.stringify({
-        user_id: distProfile.id,
+        user_id: distributor.user_id,
         title: message.title,
         body: message.body,
-        url: '/distributor/orders',
+        url: `/distributor/orders/${order.po_id}`,
       }),
     })
+
+    // [NOTIFY] On approval, insert a dispatch pending notification for all admins
+    if (new_status === 'approved') {
+      const { data: admins } = await supabaseAdmin
+        .from('admins')
+        .select('user_id')
+
+      if (admins && admins.length > 0) {
+        const adminNotifs = admins.map((a: { user_id: string }) => ({
+          user_id: a.user_id,
+          title: 'Dispatch Pending',
+          message: `Order ${order.po_id} has been approved and is awaiting dispatch.`,
+          url: '/admin/dispatch',
+          read: false,
+        }))
+
+        await supabaseAdmin
+          .from('notifications')
+          .insert(adminNotifs)
+      }
+    }
 
     return new Response(JSON.stringify({ success: true }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
 
