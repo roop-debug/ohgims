@@ -20,6 +20,8 @@ interface InventoryRow {
   price: number
   selling_price: number
   gst_rate: number
+  // [HSN] Added hsn_code to InventoryRow interface
+  hsn_code: string
 }
 
 export default function AdminInventory() {
@@ -34,6 +36,8 @@ export default function AdminInventory() {
   const [editSellingPrice, setEditSellingPrice] = useState('')
   const [editGST, setEditGST] = useState('')
   const [editPcsPerUnit, setEditPcsPerUnit] = useState('')
+  // [HSN] Added editHSN state for SKU Details edit mode
+  const [editHSN, setEditHSN] = useState('')
   const [data, setData] = useState<InventoryRow[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -47,8 +51,9 @@ export default function AdminInventory() {
         stock_out,
         total_stock,
         status,
-        skus (name, pcs_per_unit, price, selling_price, gst_rate, status)
+        skus (name, pcs_per_unit, price, selling_price, gst_rate, status, hsn_code)
       `)
+      // [HSN] Added hsn_code to the skus select query ^^^
       .order('date', { ascending: false })
 
     if (!error && data) {
@@ -68,6 +73,8 @@ export default function AdminInventory() {
             price: row.skus?.price ?? 0,
             selling_price: row.skus?.selling_price ?? 0,
             gst_rate: row.skus?.gst_rate ?? 0,
+            // [HSN] Mapped hsn_code from skus join
+            hsn_code: row.skus?.hsn_code ?? '',
           }
         }
         grouped[row.sku_id].stock_in += row.stock_in
@@ -87,6 +94,8 @@ export default function AdminInventory() {
   const [newSellingPrice, setNewSellingPrice] = useState('')
   const [newStock, setNewStock] = useState('')
   const [newGST, setNewGST] = useState('')
+  // [HSN] Added newHSN state for the Add Item form
+  const [newHSN, setNewHSN] = useState('')
   const [stockValue, setStockValue] = useState(0)
 
   async function handleAddItem() {
@@ -102,6 +111,8 @@ export default function AdminInventory() {
         gst_rate: parseFloat(newGST) || 0,
         pcs_per_unit: parseInt(newPcsPerUnit) || 1,
         status: 'Active',
+        // [HSN] Added hsn_code to skus insert
+        hsn_code: newHSN || null,
       })
 
     if (skuError) { console.error(skuError); return }
@@ -150,6 +161,8 @@ export default function AdminInventory() {
     setNewSellingPrice('')
     setNewGST('')
     setNewStock('')
+    // [HSN] Reset newHSN on successful add
+    setNewHSN('')
     setAddModalOpen(false)
     fetchInventory()
   }
@@ -215,6 +228,8 @@ export default function AdminInventory() {
     setEditSellingPrice(selectedSKU.selling_price.toString())
     setEditGST(selectedSKU.gst_rate.toString())
     setEditPcsPerUnit(selectedSKU.pcs_per_unit.toString())
+    // [HSN] Populate editHSN when entering edit mode
+    setEditHSN(selectedSKU.hsn_code ?? '')
     setEditMode(true)
   }
 
@@ -228,6 +243,8 @@ export default function AdminInventory() {
         selling_price: parseFloat(editSellingPrice) || 0,
         gst_rate: parseFloat(editGST) || 0,
         pcs_per_unit: parseInt(editPcsPerUnit) || 1,
+        // [HSN] Added hsn_code to skus update
+        hsn_code: editHSN || null,
       })
       .eq('sku_id', selectedSKU.sku)
     if (error) { console.error(error); return }
@@ -360,6 +377,11 @@ export default function AdminInventory() {
             <label className={labelClass}>GST Rate (%)</label>
             <input type="number" value={newGST} onChange={(e) => setNewGST(e.target.value)} placeholder="e.g. 18" className={inputClass} />
           </div>
+          {/* [HSN] Added HSN Code input field to Add Item form */}
+          <div>
+            <label className={labelClass}>HSN Code</label>
+            <input value={newHSN} onChange={(e) => setNewHSN(e.target.value)} placeholder="e.g. 21069099" className={inputClass} />
+          </div>
           <div>
             <label className={labelClass}>Initial Stock (boxes)</label>
             <input type="number" value={newStock} onChange={(e) => setNewStock(e.target.value)} placeholder="e.g. 100" className={inputClass} />
@@ -452,6 +474,11 @@ export default function AdminInventory() {
                       ₹{(selectedSKU.price * selectedSKU.pcs_per_unit).toLocaleString('en-IN')}
                     </span>
                   </div>
+                  {/* [HSN] Added HSN Code row to SKU Details view */}
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-500">HSN Code</span>
+                    <span className="font-medium text-gray-900">{selectedSKU.hsn_code || '—'}</span>
+                  </div>
                 </div>
                 <div className="flex gap-3 mt-2">
                   <button
@@ -494,6 +521,11 @@ export default function AdminInventory() {
                   <div>
                     <label className={labelClass}>Pcs per Box</label>
                     <input type="number" value={editPcsPerUnit} onChange={(e) => setEditPcsPerUnit(e.target.value)} className={inputClass} />
+                  </div>
+                  {/* [HSN] Added HSN Code input field to SKU Details edit mode */}
+                  <div>
+                    <label className={labelClass}>HSN Code</label>
+                    <input value={editHSN} onChange={(e) => setEditHSN(e.target.value)} placeholder="e.g. 21069099" className={inputClass} />
                   </div>
                 </div>
                 <div className="flex gap-3 mt-2">
