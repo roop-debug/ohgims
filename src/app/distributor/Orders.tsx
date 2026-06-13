@@ -14,6 +14,8 @@ interface OrderRow {
   created_at: string
   status: 'pending' | 'approved' | 'dispatched' | 'delivered' | 'cancelled'
   eta: string | null
+  dispatch_status: 'pending' | 'in_transit' | 'delivered' | null
+  dispatch_id: string | null
 }
 
 interface OrderItem {
@@ -36,7 +38,6 @@ export default function DistributorOrders() {
   const [orderItems, setOrderItems] = useState<OrderItem[]>([])
   const [modalOpen, setModalOpen] = useState(false)
 
-  // Cancel modal state
   const [cancelModalOpen, setCancelModalOpen] = useState(false)
   const [cancelReason, setCancelReason] = useState('')
   const [cancelling, setCancelling] = useState(false)
@@ -48,7 +49,7 @@ export default function DistributorOrders() {
   async function fetchOrders() {
     const { data, error } = await supabase
       .from('purchase_orders')
-      .select('po_id, created_at, status, eta')
+      .select('po_id, created_at, status, eta, dispatches(dispatch_id, status)')
       .eq('distributor_id', profile?.distributor_id)
       .order('created_at', { ascending: false })
 
@@ -59,6 +60,8 @@ export default function DistributorOrders() {
         created_at: row.created_at,
         status: row.status,
         eta: row.eta,
+        dispatch_status: row.dispatches?.[0]?.status ?? null,
+        dispatch_id: row.dispatches?.[0]?.dispatch_id ?? null,
       })))
     }
     setLoading(false)
@@ -105,6 +108,18 @@ export default function DistributorOrders() {
     if (!selectedOrder || !cancelReason.trim()) return
     setCancelling(true)
 
+    const { dispatch_id, dispatch_status } = selectedOrder
+
+    // Delete the dispatch if it exists and is still pending (no stock has moved)
+    if (dispatch_id && dispatch_status === 'pending') {
+      const { error: dispatchError } = await supabase
+        .from('dispatches')
+        .delete()
+        .eq('dispatch_id', dispatch_id)
+
+      if (dispatchError) { console.error(dispatchError); setCancelling(false); return }
+    }
+
     const { error } = await supabase
       .from('purchase_orders')
       .update({ status: 'cancelled', cancellation_reason: cancelReason.trim() })
@@ -120,6 +135,13 @@ export default function DistributorOrders() {
     setCancelling(false)
     handleClose()
     fetchOrders()
+  }
+
+  // Distributor can cancel only if dispatch hasn't gone in_transit yet
+  function canDistributorCancel(order: OrderRow) {
+    if (order.status === 'pending') return true
+    if (order.status === 'approved' && order.dispatch_status === 'pending') return true
+    return false
   }
 
   const columns: ColumnDef<OrderRow>[] = [
@@ -246,7 +268,7 @@ export default function DistributorOrders() {
               )}
             </div>
 
-            {selectedOrder.status === 'pending' && (
+            {canDistributorCancel(selectedOrder) && (
               <div className="flex mt-2">
                 <button
                   onClick={openCancelModal}
@@ -255,6 +277,22 @@ export default function DistributorOrders() {
                   Cancel Order
                 </button>
               </div>
+            )}
+
+            {selectedOrder.status === 'dispatched' && (
+              <p className="text-sm text-gray-400 text-center mt-2">
+                Your order is on the way.
+              </p>
+            )}
+            {selectedOrder.status === 'delivered' && (
+              <p className="text-sm text-gray-400 text-center mt-2">
+                Order delivered.
+              </p>
+            )}
+            {selectedOrder.status === 'cancelled' && (
+              <p className="text-sm text-gray-400 text-center mt-2">
+                Order cancelled.
+              </p>
             )}
           </div>
         )}

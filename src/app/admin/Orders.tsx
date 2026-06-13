@@ -13,6 +13,8 @@ interface OrderRow {
   distributor_id: string
   created_at: string
   status: 'pending' | 'approved' | 'dispatched' | 'delivered' | 'cancelled'
+  dispatch_status: 'pending' | 'in_transit' | 'delivered' | null
+  dispatch_id: string | null
 }
 
 interface OrderItem {
@@ -32,7 +34,6 @@ export default function AdminOrders() {
   const [data, setData] = useState<OrderRow[]>([])
   const [loading, setLoading] = useState(true)
 
-  // Cancel modal state
   const [cancelModalOpen, setCancelModalOpen] = useState(false)
   const [cancelReason, setCancelReason] = useState('')
   const [cancelling, setCancelling] = useState(false)
@@ -42,7 +43,7 @@ export default function AdminOrders() {
   async function fetchOrders() {
     const { data, error } = await supabase
       .from('purchase_orders')
-      .select('po_id, created_at, status, distributor_id, distributors(name)')
+      .select('po_id, created_at, status, distributor_id, distributors(name), dispatches(dispatch_id, status)')
       .order('created_at', { ascending: false })
 
     if (!error && data) {
@@ -53,6 +54,8 @@ export default function AdminOrders() {
         distributor_id: row.distributor_id,
         created_at: new Date(row.created_at).toLocaleString('en-IN'),
         status: row.status,
+        dispatch_status: row.dispatches?.[0]?.status ?? null,
+        dispatch_id: row.dispatches?.[0]?.dispatch_id ?? null,
       })))
     }
     setLoading(false)
@@ -151,6 +154,42 @@ export default function AdminOrders() {
     if (!selectedOrder || !cancelReason.trim()) return
     setCancelling(true)
 
+    const { status, dispatch_status, dispatch_id } = selectedOrder
+
+    // Step 1: PO is dispatched (in_transit) — roll back master_inventory
+    if (status === 'dispatched' && dispatch_status === 'in_transit') {
+      for (const item of orderItems) {
+        const { data: inv } = await supabase
+          .from('master_inventory')
+          .select('inventory_id, stock_out, total_stock')
+          .eq('sku_id', item.sku)
+          .maybeSingle()
+
+        if (inv) {
+          const { error: invError } = await supabase
+            .from('master_inventory')
+            .update({
+              stock_out: inv.stock_out - item.quantity,
+              total_stock: inv.total_stock + item.quantity,
+            })
+            .eq('inventory_id', inv.inventory_id)
+
+          if (invError) { console.error(invError); setCancelling(false); return }
+        }
+      }
+    }
+
+    // Step 2: delete dispatch if it exists and hasn't been delivered
+    if (dispatch_id && dispatch_status !== 'delivered') {
+      const { error: dispatchError } = await supabase
+        .from('dispatches')
+        .delete()
+        .eq('dispatch_id', dispatch_id)
+
+      if (dispatchError) { console.error(dispatchError); setCancelling(false); return }
+    }
+
+    // Step 3: cancel the PO
     const { error } = await supabase
       .from('purchase_orders')
       .update({ status: 'cancelled', cancellation_reason: cancelReason.trim() })
@@ -261,6 +300,7 @@ export default function AdminOrders() {
               )}
             </div>
 
+            {/* pending — approve or cancel */}
             {selectedOrder.status === 'pending' && (
               <div className="flex gap-3 mt-2">
                 <button
@@ -277,15 +317,43 @@ export default function AdminOrders() {
                 </button>
               </div>
             )}
+
+            {/* approved — dispatch pending, can still cancel */}
             {selectedOrder.status === 'approved' && (
-              <p className="text-sm text-gray-400 text-center mt-2">
-                Order approved — create a dispatch from the Dispatch page.
-              </p>
+              <div className="flex flex-col gap-2 mt-2">
+                <p className="text-sm text-gray-400 text-center">
+                  Order approved — manage dispatch from the Dispatch page.
+                </p>
+                <button
+                  onClick={openCancelModal}
+                  className="w-full py-2 text-sm border border-gray-200 text-gray-600 rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  Cancel Order
+                </button>
+              </div>
             )}
+
+            {/* dispatched — in transit, admin can still cancel (with rollback) */}
             {selectedOrder.status === 'dispatched' && (
-              <p className="text-sm text-gray-400 text-center mt-2">
-                Order dispatched — mark delivered from the Dispatch page.
-              </p>
+              <div className="flex flex-col gap-2 mt-2">
+                <p className="text-sm text-gray-400 text-center">
+                  Order dispatched — mark delivered from the Dispatch page.
+                </p>
+                <button
+                  onClick={openCancelModal}
+                  className="w-full py-2 text-sm border border-gray-200 text-gray-600 rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  Cancel Order
+                </button>
+              </div>
+            )}
+
+            {selectedOrder.status === 'delivered' && (
+              <p className="text-sm text-gray-400 text-center mt-2">Order delivered.</p>
+            )}
+
+            {selectedOrder.status === 'cancelled' && (
+              <p className="text-sm text-gray-400 text-center mt-2">Order cancelled.</p>
             )}
           </div>
         )}
@@ -298,6 +366,14 @@ export default function AdminOrders() {
         onClose={() => setCancelModalOpen(false)}
       >
         <div className="flex flex-col gap-4">
+          {selectedOrder?.status === 'dispatched' && (
+            <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+              <p className="text-xs text-amber-700 font-medium">⚠️ Stock in transit</p>
+              <p className="text-xs text-amber-600 mt-0.5">
+                Cancelling this order will restore the dispatched quantities back to master inventory.
+              </p>
+            </div>
+          )}
           <p className="text-sm text-gray-600">
             Please provide a reason for cancelling{' '}
             <span className="font-medium text-gray-900">{selectedOrder?.po_no}</span>.
