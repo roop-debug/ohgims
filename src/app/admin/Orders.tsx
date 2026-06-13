@@ -39,7 +39,26 @@ export default function AdminOrders() {
   const [cancelReason, setCancelReason] = useState('')
   const [cancelling, setCancelling] = useState(false)
 
-  useEffect(() => { fetchOrders() }, [])
+  // [REALTIME] Subscribe to purchase_orders changes so new orders appear without refresh.
+  // Make sure Realtime is enabled on the purchase_orders table in Supabase dashboard:
+  // Table Editor → purchase_orders → Realtime toggle ON
+  useEffect(() => {
+    fetchOrders()
+
+    const channel = supabase
+      .channel('admin-orders')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'purchase_orders' },
+        () => {
+          // Re-fetch on any INSERT or UPDATE so the list stays current
+          fetchOrders()
+        }
+      )
+      .subscribe()
+
+    return () => { supabase.removeChannel(channel) }
+  }, [])
 
   async function fetchOrders() {
     const { data, error } = await supabase
@@ -96,56 +115,97 @@ export default function AdminOrders() {
   }
 
   async function handleApprove() {
-    if (!selectedOrder) return
+  if (!selectedOrder) return
 
-    const insufficientItems: string[] = []
+  const insufficientItems: string[] = []
 
-    for (const item of orderItems) {
-      const { data: inv } = await supabase
-        .from('master_inventory')
-        .select('total_stock')
-        .eq('sku_id', item.sku)
-        .order('date', { ascending: false })
-        .limit(1)
-        .maybeSingle()
+  for (const item of orderItems) {
+    const { data: inv } = await supabase
+      .from('master_inventory')
+      .select('total_stock')
+      .eq('sku_id', item.sku)
+      .order('date', { ascending: false })
+      .limit(1)
+      .maybeSingle()
 
-      const available = inv?.total_stock ?? 0
-      if (available < item.quantity) {
-        insufficientItems.push(`${item.item_name} (need ${item.quantity}, have ${available})`)
-      }
+    const available = inv?.total_stock ?? 0
+    if (available < item.quantity) {
+      insufficientItems.push(`${item.item_name} (need ${item.quantity}, have ${available})`)
     }
+  }
 
-    if (insufficientItems.length > 0) {
-      alert(`Cannot approve — insufficient stock:\n${insufficientItems.join('\n')}`)
-      return
-    }
+  if (insufficientItems.length > 0) {
+    alert(`Cannot approve — insufficient stock:\n${insufficientItems.join('\n')}`)
+    return
+  }
 
-    const { error } = await supabase
-      .from('purchase_orders')
-      .update({ status: 'approved' })
-      .eq('po_id', selectedOrder.id)
+  const { error } = await supabase
+    .from('purchase_orders')
+    .update({ status: 'approved' })
+    .eq('po_id', selectedOrder.id)
 
-    if (error) { console.error(error); return }
+  if (error) { console.error(error); return }
 
-    const { error: dispatchError } = await supabase
-      .from('dispatches')
-      .insert({
-        po_id: selectedOrder.id,
-        distributor_id: selectedOrder.distributor_id,
-        dispatched_at: new Date().toISOString(),
-        eta: null,
-        status: 'pending',
-      })
-
-    if (dispatchError) { console.error(dispatchError); return }
-
-    await supabase.functions.invoke('notify-order-status', {
-      body: { order_id: selectedOrder.id, new_status: 'approved' }
+  const { error: dispatchError } = await supabase
+    .from('dispatches')
+    .insert({
+      po_id: selectedOrder.id,
+      distributor_id: selectedOrder.distributor_id,
+      dispatched_at: new Date().toISOString(),
+      eta: null,
+      status: 'pending',
     })
 
-    handleClose()
-    fetchOrders()
+  if (dispatchError) { console.error(dispatchError); return }
+
+  // [NOTIFY] Notify the distributor their order was approved
+  const { data: dist, error: distError } = await supabase
+    .from('distributors')
+    .select('user_id')
+    .eq('distributor_id', selectedOrder.distributor_id)
+    .single()
+
+  if (distError || !dist?.user_id) {
+    console.error('Could not find distributor user_id for notification', distError)
+  } else {
+    const { error: notifError } = await supabase
+      .from('notifications')
+      .insert({
+        user_id: dist.user_id,
+        title: 'Order Approved',
+        message: `Your order ${selectedOrder.po_no} has been approved and is being prepared for dispatch.`,
+        url: `/distributor/orders/${selectedOrder.id}`,
+        read: false,
+      })
+    if (notifError) console.error('Failed to insert distributor notification', notifError)
   }
+
+  // [NOTIFY] Notify all admins of pending dispatch
+  const { data: admins, error: adminsError } = await supabase
+    .from('admins')
+    .select('user_id')
+
+  if (adminsError || !admins?.length) {
+    console.error('Could not fetch admins for notification', adminsError)
+  } else {
+    const adminNotifs = admins.map((a: { user_id: string }) => ({
+      user_id: a.user_id,
+      title: 'Dispatch Pending',
+      message: `Order ${selectedOrder.po_no} for ${selectedOrder.distributor} has been approved and is awaiting dispatch.`,
+      url: '/admin/dispatch',
+      read: false,
+    }))
+
+    const { error: adminNotifError } = await supabase
+      .from('notifications')
+      .insert(adminNotifs)
+
+    if (adminNotifError) console.error('Failed to insert admin notifications', adminNotifError)
+  }
+
+  handleClose()
+  fetchOrders()
+}
 
   function openCancelModal() {
     setCancelReason('')
