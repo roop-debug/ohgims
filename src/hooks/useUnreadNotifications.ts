@@ -12,7 +12,7 @@ export function useUnreadNotifications() {
     fetchUnread()
 
     const channel = supabase
-      .channel('unread-notifications')
+      .channel('unread-notifications-${user.id}')
       .on(
         'postgres_changes',
         {
