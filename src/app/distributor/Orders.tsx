@@ -139,7 +139,6 @@ export default function DistributorOrders() {
     fetchOrders()
   }
 
-  // Distributor can cancel only if dispatch hasn't gone in_transit yet
   function canDistributorCancel(order: OrderRow) {
     if (order.status === 'pending') return true
     if (order.status === 'approved' && order.dispatch_status === 'pending') return true
@@ -148,7 +147,21 @@ export default function DistributorOrders() {
 
   const columns: ColumnDef<OrderRow>[] = [
     { header: 'Sr No.', cell: ({ row }) => row.index + 1 },
-    { header: 'PO No.', accessorKey: 'po_no' },
+    {
+      header: 'PO No.',
+      accessorKey: 'po_no',
+      cell: ({ getValue, row }) => (
+        <span
+          className="text-[#eb2030] font-medium underline underline-offset-2 cursor-pointer hover:text-[#c4001a]"
+          onClick={e => {
+            e.stopPropagation()
+            navigate(`/distributor/orders/${getValue() as string}`)
+          }}
+        >
+          {getValue() as string}
+        </span>
+      ),
+    },
     {
       header: 'Purchase Date/Time',
       accessorKey: 'created_at',
@@ -231,7 +244,15 @@ export default function DistributorOrders() {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <p className="text-xs text-gray-500">PO No.</p>
-                <p className="text-sm font-medium text-gray-900">{selectedOrder.po_no}</p>
+                <button
+                  className="text-sm font-medium text-[#eb2030] underline underline-offset-2 hover:text-[#c4001a]"
+                  onClick={() => {
+                    handleClose()
+                    navigate(`/distributor/orders/${selectedOrder.po_no}`)
+                  }}
+                >
+                  {selectedOrder.po_no}
+                </button>
               </div>
               <div>
                 <p className="text-xs text-gray-500">Status</p>
@@ -282,21 +303,15 @@ export default function DistributorOrders() {
             )}
 
             {selectedOrder.status === 'dispatched' && (
-              <p className="text-sm text-gray-400 text-center mt-2">
-                Your order is on the way.
-              </p>
+              <p className="text-sm text-gray-400 text-center mt-2">Your order is on the way.</p>
             )}
             {selectedOrder.status === 'delivered' && (
-              <p className="text-sm text-gray-400 text-center mt-2">
-                Order delivered.
-              </p>
+              <p className="text-sm text-gray-400 text-center mt-2">Order delivered.</p>
             )}
             {selectedOrder.status === 'cancelled' && (
               <div className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-3 mt-2">
                 <p className="text-xs text-gray-500 mb-1">Cancellation Reason</p>
-                <p className="text-sm text-gray-800">
-                  {selectedOrder.cancellation_reason || '—'}
-                </p>
+                <p className="text-sm text-gray-800">{selectedOrder.cancellation_reason || '—'}</p>
               </div>
             )}
           </div>
