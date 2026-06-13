@@ -1,20 +1,24 @@
 import { useState, useEffect, useRef } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
+import { useUnreadNotifications } from '../../hooks/useUnreadNotifications'
 import type { Notification } from '../../types'
 
 export default function NotificationBell() {
   const { user } = useAuth()
+  const navigate = useNavigate()
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [open, setOpen] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
 
-  const unreadCount = notifications.filter((n) => !n.read).length  // Fetch notifications on mount
+  // [NOTIFY] Use shared hook for unread count (keeps Sidebar in sync)
+  const { unreadCount, markRead, clearAll } = useUnreadNotifications()
+
   useEffect(() => {
     if (!user) return
     fetchNotifications()
 
-    // Realtime subscription — new notifications appear instantly
     const channel = supabase
       .channel('notifications')
       .on(
@@ -34,7 +38,6 @@ export default function NotificationBell() {
     return () => { supabase.removeChannel(channel) }
   }, [user])
 
-  // Close dropdown on outside click
   useEffect(() => {
     function handleClick(e: MouseEvent) {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
@@ -56,21 +59,43 @@ export default function NotificationBell() {
     if (data) setNotifications(data)
   }
 
-  async function handleOpen() {
-  setOpen((v) => !v)
+  function handleOpen() {
+    setOpen((v) => !v)
+  }
 
-  if (!open && unreadCount > 0) {
+  // [NOTIFY] Click a notification: mark it read individually, navigate to its url, close dropdown
+  async function handleNotificationClick(n: Notification) {
+    if (!n.read) {
+      await supabase
+        .from('notifications')
+        .update({ read: true })
+        .eq('notification_id', n.notification_id)
+
+      // Update local list
+      setNotifications((prev) =>
+        prev.map((x) => x.notification_id === n.notification_id ? { ...x, read: true } : x)
+      )
+      // [NOTIFY] Sync shared hook so Sidebar dot updates immediately
+      markRead(n.notification_id)
+    }
+
+    if (n.url) {
+      navigate(n.url)
+      setOpen(false)
+    }
+  }
+
+  // [NOTIFY] Mark all as read (used when user opens dropdown with no intent to click)
+  async function handleMarkAllRead() {
     await supabase
       .from('notifications')
       .update({ read: true })
       .eq('user_id', user!.id)
       .eq('read', false)
 
-    setNotifications((prev) =>
-      prev.map((n) => ({ ...n, read: true }))
-    )
+    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })))
+    clearAll()
   }
-}
 
   function timeAgo(dateStr: string) {
     const diff = Date.now() - new Date(dateStr).getTime()
@@ -103,8 +128,17 @@ export default function NotificationBell() {
         <div className="absolute right-0 mt-1 w-80 bg-white rounded-xl border border-gray-200 shadow-lg z-50 overflow-hidden">
 
           {/* Header */}
-          <div className="px-4 py-3 border-b border-gray-100">
+          <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
             <p className="text-sm font-medium text-gray-900">Notifications</p>
+            {/* [NOTIFY] Mark all read button — only shown when there are unread */}
+            {unreadCount > 0 && (
+              <button
+                onClick={handleMarkAllRead}
+                className="text-xs text-[#eb2030] hover:underline"
+              >
+                Mark all read
+              </button>
+            )}
           </div>
 
           {/* List */}
@@ -113,20 +147,24 @@ export default function NotificationBell() {
               <p className="text-sm text-gray-400 text-center py-8">No notifications yet</p>
             ) : (
               notifications.map((n) => (
-  <div
-    key={n.notification_id}
-    className={`px-4 py-3 flex gap-3 ${!n.read ? 'bg-red-50' : ''}`}
-  >
-    <div className="flex-1">
-      <p className="text-sm font-medium text-gray-900">{n.title}</p>
-      <p className="text-xs text-gray-500 mt-0.5">{n.message}</p>
-      <p className="text-xs text-gray-400 mt-1">{timeAgo(n.created_at)}</p>
-    </div>
-    {!n.read && (
-      <div className="w-2 h-2 bg-[#eb2030] rounded-full mt-1.5 flex-shrink-0" />
-    )}
-  </div>
-))
+                // [NOTIFY] Each notification is now a clickable button
+                <button
+                  key={n.notification_id}
+                  onClick={() => handleNotificationClick(n)}
+                  className={`w-full text-left px-4 py-3 flex gap-3 transition-colors hover:bg-gray-50 ${
+                    !n.read ? 'bg-red-50 hover:bg-red-100' : ''
+                  } ${n.url ? 'cursor-pointer' : 'cursor-default'}`}
+                >
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-gray-900">{n.title}</p>
+                    <p className="text-xs text-gray-500 mt-0.5">{n.message}</p>
+                    <p className="text-xs text-gray-400 mt-1">{timeAgo(n.created_at)}</p>
+                  </div>
+                  {!n.read && (
+                    <div className="w-2 h-2 bg-[#eb2030] rounded-full mt-1.5 flex-shrink-0" />
+                  )}
+                </button>
+              ))
             )}
           </div>
 

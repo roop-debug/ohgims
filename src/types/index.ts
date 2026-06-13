@@ -93,6 +93,7 @@ export interface Notification {
   message: string
   read: boolean
   created_at: string
+  url: string | null
 }
 export interface PushSubscription {
   id: string
