@@ -92,6 +92,10 @@ export default function AdminInventory() {
     fetchInventory()
     // [OFFERS] Fetch active offers on mount
     fetchActiveOffers(supabase).then(setActiveOffers)
+    fetchActiveOffers(supabase).then((offers) => {
+  console.log('active offers:', offers)
+  setActiveOffers(offers)
+})
   }, [])
 
   const [newSKU, setNewSKU] = useState('')
