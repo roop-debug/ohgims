@@ -3,16 +3,16 @@ import { useNavigate } from 'react-router-dom'
 import AppLayout from '../../components/shared/AppLayout'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
+import { fetchActiveOffers, getEffectivePrice } from '../../lib/offerUtil'
+import type { ActiveOffer } from '../../lib/offerUtil'
 
 interface SKURow {
   sku_id: string
   name: string
   price: number
   gst_rate: number
-  // --- ADDED ---
   pcs_per_unit: number
-  // --- END ---
-  quantity: number // in boxes
+  quantity: number
 }
 
 export default function CreateOrder() {
@@ -21,17 +21,19 @@ export default function CreateOrder() {
 
   const [items, setItems] = useState<SKURow[]>([])
   const [submitting, setSubmitting] = useState(false)
+  // [OFFERS] Active offers fetched on mount
+  const [activeOffers, setActiveOffers] = useState<ActiveOffer[]>([])
 
   useEffect(() => {
     fetchSKUs()
+    // [OFFERS] Fetch active offers alongside SKUs
+    fetchActiveOffers(supabase).then(setActiveOffers)
   }, [])
 
   async function fetchSKUs() {
     const { data, error } = await supabase
       .from('skus')
-      // --- ADDED pcs_per_unit to select ---
       .select('sku_id, name, price, gst_rate, pcs_per_unit')
-      // --- END ---
       .eq('status', 'Active')
 
     if (!error && data) {
@@ -49,13 +51,13 @@ export default function CreateOrder() {
 
   const selectedItems = items.filter((i) => i.quantity > 0)
 
-  // --- UPDATED calcTotal to use pcs_per_unit ---
+  // [OFFERS] calcTotal uses effective (offer) price if available
   function calcTotal(item: SKURow) {
-    const base = item.price * item.pcs_per_unit * item.quantity
+    const { effectivePrice } = getEffectivePrice(item.sku_id, item.price, activeOffers)
+    const base = effectivePrice * item.pcs_per_unit * item.quantity
     const gst = (base * item.gst_rate) / 100
     return base + gst
   }
-  // --- END ---
 
   const grandTotal = selectedItems.reduce((sum, item) => sum + calcTotal(item), 0)
 
@@ -76,26 +78,29 @@ export default function CreateOrder() {
 
     if (poError) { console.error(poError); setSubmitting(false); return }
 
-    // --- UPDATED line items to use pcs_per_unit for rate and price ---
-    const lineItems = selectedItems.map((item) => ({
-      po_id: poId,
-      sku_id: item.sku_id,
-      item_name: item.name,
-      quantity: item.quantity, // in boxes
-      rate: item.price * item.pcs_per_unit, // price per box
-      gst: item.gst_rate,
-      price: calcTotal(item), // total for this line
-    }))
-    // --- END ---
+    // [OFFERS] Line items use effective (offer) price per box as rate
+    const lineItems = selectedItems.map((item) => {
+      const { effectivePrice } = getEffectivePrice(item.sku_id, item.price, activeOffers)
+      return {
+        po_id: poId,
+        sku_id: item.sku_id,
+        item_name: item.name,
+        quantity: item.quantity,
+        rate: effectivePrice * item.pcs_per_unit, // effective price per box
+        gst: item.gst_rate,
+        price: calcTotal(item),
+      }
+    })
 
     const { error: lineError } = await supabase
       .from('po_line_items')
       .insert(lineItems)
-    // Notify admins of new order
-  await supabase.functions.invoke('notify-new-order', {
-  body: { order_id: poId, distributor_name: profile?.distributor_id }
-})
+
     if (lineError) { console.error(lineError); setSubmitting(false); return }
+
+    await supabase.functions.invoke('notify-new-order', {
+      body: { order_id: poId, distributor_name: profile?.distributor_id }
+    })
 
     setSubmitting(false)
     navigate('/distributor/orders')
@@ -119,12 +124,8 @@ export default function CreateOrder() {
             <thead>
               <tr className="border-b border-gray-100 bg-gray-50">
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
-                {/* --- UPDATED header to show boxes --- */}
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Quantity (boxes)</th>
-                {/* --- END --- */}
-                {/* --- UPDATED header to show per box --- */}
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Price per Box</th>
-                {/* --- END --- */}
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">GST</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Total Price</th>
               </tr>
@@ -138,19 +139,29 @@ export default function CreateOrder() {
                 </tr>
               ) : (
                 items.map((item) => {
-                  // --- UPDATED price calculation to use pcs_per_unit ---
-                  const pricePerBox = item.price * item.pcs_per_unit
-                  const base = pricePerBox * item.quantity
+                  // [OFFERS] Compute effective price per box for display
+                  const { effectivePrice, originalPrice, hasOffer } = getEffectivePrice(
+                    item.sku_id,
+                    item.price,
+                    activeOffers
+                  )
+                  const effectivePerBox = effectivePrice * item.pcs_per_unit
+                  const originalPerBox = (originalPrice ?? item.price) * item.pcs_per_unit
+                  const base = effectivePerBox * item.quantity
                   const gst = (base * item.gst_rate) / 100
                   const total = base + gst
-                  // --- END ---
+
                   return (
                     <tr key={item.sku_id} className="hover:bg-gray-50 transition-colors">
                       <td className="px-4 py-3 text-gray-900">
                         {item.name}
-                        {/* --- ADDED pcs per box hint --- */}
                         <span className="block text-xs text-gray-400">{item.pcs_per_unit} pcs/box</span>
-                        {/* --- END --- */}
+                        {/* [OFFERS] Offer badge */}
+                        {hasOffer && (
+                          <span className="inline-block mt-0.5 text-xs bg-red-50 text-[#eb2030] border border-red-100 rounded-full px-2 py-0.5">
+                            Offer Active
+                          </span>
+                        )}
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2">
@@ -164,16 +175,26 @@ export default function CreateOrder() {
                             onChange={(e) => handleQuantityChange(item.sku_id, Number(e.target.value))}
                             className="w-14 text-center border border-gray-200 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-[#eb2030]"
                           />
-                          {/* --- ADDED boxes label --- */}
                           <span className="text-xs text-gray-400">boxes</span>
-                          {/* --- END --- */}
                         </div>
                       </td>
-                      {/* --- UPDATED price cell to show per box price --- */}
-                      <td className="px-4 py-3 text-gray-700">
-                        ₹{pricePerBox.toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+                      {/* [OFFERS] Price cell with strikethrough if offer active */}
+                      <td className="px-4 py-3">
+                        {hasOffer ? (
+                          <div className="flex flex-col">
+                            <span className="text-xs text-gray-400 line-through">
+                              ₹{originalPerBox.toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+                            </span>
+                            <span className="text-sm font-medium text-[#eb2030]">
+                              ₹{effectivePerBox.toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+                            </span>
+                          </div>
+                        ) : (
+                          <span className="text-gray-700">
+                            ₹{effectivePerBox.toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+                          </span>
+                        )}
                       </td>
-                      {/* --- END --- */}
                       <td className="px-4 py-3 text-gray-700">{item.gst_rate}%</td>
                       <td className="px-4 py-3 text-gray-700">
                         {item.quantity > 0 ? `₹${total.toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : '—'}

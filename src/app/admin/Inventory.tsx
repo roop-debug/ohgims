@@ -6,6 +6,8 @@ import StatusBadge from '../../components/shared/StatusBadge'
 import type { ColumnDef } from '@tanstack/react-table'
 import { useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
+import { fetchActiveOffers, getEffectivePrice } from '../../lib/offerUtil'
+import type { ActiveOffer } from '../../lib/offerUtil'
 
 interface InventoryRow {
   id: string
@@ -40,6 +42,8 @@ export default function AdminInventory() {
   const [editHSN, setEditHSN] = useState('')
   const [data, setData] = useState<InventoryRow[]>([])
   const [loading, setLoading] = useState(true)
+  // [OFFERS] Active offers state
+  const [activeOffers, setActiveOffers] = useState<ActiveOffer[]>([])
 
   async function fetchInventory() {
     const { data, error } = await supabase
@@ -53,7 +57,6 @@ export default function AdminInventory() {
         status,
         skus (name, pcs_per_unit, price, selling_price, gst_rate, status, hsn_code)
       `)
-      // [HSN] Added hsn_code to the skus select query ^^^
       .order('date', { ascending: false })
 
     if (!error && data) {
@@ -85,7 +88,11 @@ export default function AdminInventory() {
     setLoading(false)
   }
 
-  useEffect(() => { fetchInventory() }, [])
+  useEffect(() => {
+    fetchInventory()
+    // [OFFERS] Fetch active offers on mount
+    fetchActiveOffers(supabase).then(setActiveOffers)
+  }, [])
 
   const [newSKU, setNewSKU] = useState('')
   const [newName, setNewName] = useState('')
@@ -168,46 +175,43 @@ export default function AdminInventory() {
   }
 
   async function handleSaveStock() {
-  if (!selectedItem) return
-  const diff = stockValue - selectedItem.total_stock
-  if (diff === 0) { setManageModalOpen(false); return }
-  const newTotal = stockValue
-  const newStatus = newTotal <= 0 ? 'Out of Stock' : newTotal <= 10 ? 'Low Stock' : 'In Stock'
+    if (!selectedItem) return
+    const diff = stockValue - selectedItem.total_stock
+    if (diff === 0) { setManageModalOpen(false); return }
+    const newTotal = stockValue
+    const newStatus = newTotal <= 0 ? 'Out of Stock' : newTotal <= 10 ? 'Low Stock' : 'In Stock'
 
-  const { data: currentInv } = await supabase
-    .from('master_inventory')
-    .select('inventory_id, stock_in, stock_out')
-    .eq('sku_id', selectedItem.sku)
-    .order('date', { ascending: false })
-    .limit(1)
-    .maybeSingle()
+    const { data: currentInv } = await supabase
+      .from('master_inventory')
+      .select('inventory_id, stock_in, stock_out')
+      .eq('sku_id', selectedItem.sku)
+      .order('date', { ascending: false })
+      .limit(1)
+      .maybeSingle()
 
-  if (!currentInv) return
+    if (!currentInv) return
 
-  const { error } = await supabase
-    .from('master_inventory')
-    .update({
-      stock_in: diff > 0 ? currentInv.stock_in + diff : currentInv.stock_in,
-      stock_out: diff < 0 ? currentInv.stock_out + Math.abs(diff) : currentInv.stock_out,
-      total_stock: newTotal,
-      status: newStatus,
-      date: new Date().toISOString().split('T')[0],
-    })
-    .eq('inventory_id', currentInv.inventory_id)
+    const { error } = await supabase
+      .from('master_inventory')
+      .update({
+        stock_in: diff > 0 ? currentInv.stock_in + diff : currentInv.stock_in,
+        stock_out: diff < 0 ? currentInv.stock_out + Math.abs(diff) : currentInv.stock_out,
+        total_stock: newTotal,
+        status: newStatus,
+        date: new Date().toISOString().split('T')[0],
+      })
+      .eq('inventory_id', currentInv.inventory_id)
 
-  if (error) { console.error(error); return }
+    if (error) { console.error(error); return }
 
-  // Notify admins if stock is low or out
-  if (newStatus === 'Out of Stock' || newStatus === 'Low Stock') {
-    await supabase.functions.invoke('notify-low-stock', {
-      body: {}
-    })
+    if (newStatus === 'Out of Stock' || newStatus === 'Low Stock') {
+      await supabase.functions.invoke('notify-low-stock', { body: {} })
+    }
+
+    setManageModalOpen(false)
+    setSelectedItem(null)
+    fetchInventory()
   }
-
-  setManageModalOpen(false)
-  setSelectedItem(null)
-  fetchInventory()
-}
 
   function handleManageStock(row: InventoryRow) {
     setSelectedItem(row)
@@ -296,6 +300,37 @@ export default function AdminInventory() {
     { header: 'Stock Out (boxes)', accessorKey: 'stock_out' },
     { header: 'Total Stock (boxes)', accessorKey: 'total_stock' },
     { header: 'Pcs/Box', accessorKey: 'pcs_per_unit' },
+    // [OFFERS] Price per Box column with strikethrough when offer is active
+    {
+      header: 'Price per Box',
+      cell: ({ row }) => {
+        const { effectivePrice, originalPrice, hasOffer } = getEffectivePrice(
+          row.original.sku,
+          row.original.price,
+          activeOffers
+        )
+        const effectivePerBox = effectivePrice * row.original.pcs_per_unit
+        const originalPerBox = (originalPrice ?? row.original.price) * row.original.pcs_per_unit
+
+        if (hasOffer) {
+          return (
+            <div className="flex flex-col">
+              <span className="text-xs text-gray-400 line-through">
+                ₹{originalPerBox.toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+              </span>
+              <span className="text-sm font-medium text-[#eb2030]">
+                ₹{effectivePerBox.toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+              </span>
+            </div>
+          )
+        }
+        return (
+          <span className="text-sm text-gray-700">
+            ₹{(row.original.price * row.original.pcs_per_unit).toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+          </span>
+        )
+      },
+    },
     {
       header: 'Action',
       cell: ({ row }) => (
@@ -452,9 +487,45 @@ export default function AdminInventory() {
                       {selectedSKU.sku_status}
                     </span>
                   </div>
+                  {/* [OFFERS] Price per Pc with strikethrough in SKU details view */}
                   <div className="flex justify-between text-sm">
                     <span className="text-gray-500">Price per Pc</span>
-                    <span className="font-medium text-gray-900">₹{selectedSKU.price.toLocaleString('en-IN')}</span>
+                    {(() => {
+                      const { effectivePrice, originalPrice, hasOffer } = getEffectivePrice(
+                        selectedSKU.sku,
+                        selectedSKU.price,
+                        activeOffers
+                      )
+                      return hasOffer ? (
+                        <div className="flex flex-col items-end">
+                          <span className="text-xs text-gray-400 line-through">₹{(originalPrice ?? selectedSKU.price).toLocaleString('en-IN')}</span>
+                          <span className="font-medium text-[#eb2030]">₹{effectivePrice.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</span>
+                        </div>
+                      ) : (
+                        <span className="font-medium text-gray-900">₹{selectedSKU.price.toLocaleString('en-IN')}</span>
+                      )
+                    })()}
+                  </div>
+                  {/* [OFFERS] Price per Box with strikethrough in SKU details view */}
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-500">Price per Box</span>
+                    {(() => {
+                      const { effectivePrice, originalPrice, hasOffer } = getEffectivePrice(
+                        selectedSKU.sku,
+                        selectedSKU.price,
+                        activeOffers
+                      )
+                      const effBox = effectivePrice * selectedSKU.pcs_per_unit
+                      const origBox = (originalPrice ?? selectedSKU.price) * selectedSKU.pcs_per_unit
+                      return hasOffer ? (
+                        <div className="flex flex-col items-end">
+                          <span className="text-xs text-gray-400 line-through">₹{origBox.toLocaleString('en-IN')}</span>
+                          <span className="font-medium text-[#eb2030]">₹{effBox.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</span>
+                        </div>
+                      ) : (
+                        <span className="font-medium text-gray-900">₹{(selectedSKU.price * selectedSKU.pcs_per_unit).toLocaleString('en-IN')}</span>
+                      )
+                    })()}
                   </div>
                   <div className="flex justify-between text-sm">
                     <span className="text-gray-500">Selling Price per Pc</span>
@@ -467,12 +538,6 @@ export default function AdminInventory() {
                   <div className="flex justify-between text-sm">
                     <span className="text-gray-500">Pcs per Box</span>
                     <span className="font-medium text-gray-900">{selectedSKU.pcs_per_unit}</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-500">Price per Box</span>
-                    <span className="font-medium text-gray-900">
-                      ₹{(selectedSKU.price * selectedSKU.pcs_per_unit).toLocaleString('en-IN')}
-                    </span>
                   </div>
                   {/* [HSN] Added HSN Code row to SKU Details view */}
                   <div className="flex justify-between text-sm">
