@@ -17,7 +17,7 @@ import DistributorOrderDetails from './distributor/OrderDetails'
 import CreateOrder from './distributor/CreateOrder'
 import DistributorClaims from './distributor/DistributorClaims'
 import DistributorSales from './distributor/Sales'
-/*ghj*/
+import AdminOffers from './admin/offers'
 
 function RootRedirect() {
   const { role, loading } = useAuth()
@@ -68,6 +68,12 @@ export default function Router() {
         <Route path="/admin/claims" element={
           <ProtectedRoute requiredRole="admin">
             <AdminClaims />
+          </ProtectedRoute>
+        } />
+
+        <Route path="/admin/offers" element={
+          <ProtectedRoute requiredRole="admin">
+            <AdminOffers />
           </ProtectedRoute>
         } />
 

@@ -14,6 +14,7 @@ const adminNavItems: NavItem[] = [
   { label: 'Dispatch', path: '/admin/dispatch' },
   { label: 'Claims', path: '/admin/claims' },
   { label: 'Orders', path: '/admin/orders' },
+  { label: 'Offers', path: '/admin/offers' },
 ]
 
 const distributorNavItems: NavItem[] = [
