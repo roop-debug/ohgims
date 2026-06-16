@@ -20,7 +20,8 @@ interface OfferRow {
   discount_value: number
   start_date: string
   end_date: string
-  status: 'active' | 'expired' | 'deactivated'
+  // [CHANGE] added 'scheduled' to status union
+  status: 'scheduled' | 'active' | 'expired' | 'deactivated'
   created_at: string
   sku_names: string[]
 }
@@ -43,7 +44,6 @@ export default function AdminOffers() {
   const [formDiscountType, setFormDiscountType] = useState<'percent' | 'value'>('percent')
   const [formDiscountValue, setFormDiscountValue] = useState('')
   const [formSelectedSKUs, setFormSelectedSKUs] = useState<string[]>([])
-  // [UX] Separate date and time state for start and end
   const [formStartDate, setFormStartDate] = useState('')
   const [formStartTime, setFormStartTime] = useState('00:00')
   const [formEndDate, setFormEndDate] = useState('')
@@ -116,7 +116,6 @@ export default function AdminOffers() {
     if (!formDiscountValue || Number(formDiscountValue) <= 0) return setError('Enter a valid discount value.')
     if (!formStartDate || !formEndDate) return setError('Start and end dates are required.')
 
-    // [UX] Combine separate date + time fields into ISO strings
     const startISO = new Date(`${formStartDate}T${formStartTime || '00:00'}`).toISOString()
     const endISO = new Date(`${formEndDate}T${formEndTime || '23:59'}`).toISOString()
 
@@ -152,7 +151,8 @@ export default function AdminOffers() {
         discount_value: Number(formDiscountValue),
         start_date: startISO,
         end_date: endISO,
-        status: 'active',
+        // [CHANGE] insert as 'scheduled' if start is in the future, else 'active'
+        status: new Date(startISO) > new Date() ? 'scheduled' : 'active',
       })
       .select('offer_id')
       .single()
@@ -243,7 +243,8 @@ export default function AdminOffers() {
     {
       header: 'Action',
       cell: ({ row }) =>
-        row.original.status === 'active' ? (
+        // [CHANGE] allow deactivating scheduled offers too
+        row.original.status === 'active' || row.original.status === 'scheduled' ? (
           <button
             onClick={() => setDeactivateTarget(row.original)}
             className="text-xs text-red-500 hover:underline"
@@ -360,7 +361,6 @@ export default function AdminOffers() {
             />
           </div>
 
-          {/* [UX] Separate date and time pickers for start and end */}
           <div>
             <label className={labelClass}>Start</label>
             <div className="flex gap-2">
