@@ -54,19 +54,22 @@ export async function fetchActiveOffers(supabase: any): Promise<ActiveOffer[]> {
         status
       )
     `)
-    .eq('offers.status', 'active')
-    .gt('offers.end_date', now)
 
   if (error || !data) return []
 
-  return data.map((row: any) => ({
-    offer_id: row.offers.offer_id,
-    offer_sku_id: row.offer_sku_id,
-    sku_id: row.sku_id,
-    original_price: row.original_price,
-    discount_type: row.offers.discount_type,
-    discount_value: row.offers.discount_value,
-    offer_name: row.offers.name,
-    end_date: row.offers.end_date,
-  }))
+  // [OFFERS] Filter in JS — avoids PostgREST joined column filtering quirks
+  return data
+    .filter((row: any) =>
+      row.offers.status === 'active' && new Date(row.offers.end_date) > new Date()
+    )
+    .map((row: any) => ({
+      offer_id: row.offers.offer_id,
+      offer_sku_id: row.offer_sku_id,
+      sku_id: row.sku_id,
+      original_price: row.original_price,
+      discount_type: row.offers.discount_type,
+      discount_value: row.offers.discount_value,
+      offer_name: row.offers.name,
+      end_date: row.offers.end_date,
+    }))
 }
