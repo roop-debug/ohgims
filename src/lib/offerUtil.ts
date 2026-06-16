@@ -54,6 +54,40 @@ export async function fetchActiveOffers(supabase: any): Promise<ActiveOffer[]> {
         status
       )
     `)
+    .eq('offers.status', 'active')
+    .gt('offers.end_date', now)
+
+  if (error || !data) return []
+
+  return data.map((row: any) => ({
+    offer_id: row.offers.offer_id,
+    offer_sku_id: row.offer_sku_id,
+    sku_id: row.sku_id,
+    original_price: row.original_price,
+    discount_type: row.offers.discount_type,
+    discount_value: row.offers.discount_value,
+    offer_name: row.offers.name,
+    end_date: row.offers.end_date,
+  }))
+}
+
+/* export async function fetchActiveOffers(supabase: any): Promise<ActiveOffer[]> {
+  const now = new Date().toISOString()
+  const { data, error } = await supabase
+    .from('offer_skus')
+    .select(`
+      offer_sku_id,
+      sku_id,
+      original_price,
+      offers!inner (
+        offer_id,
+        name,
+        discount_type,
+        discount_value,
+        end_date,
+        status
+      )
+    `)
 
   if (error || !data) return []
 
@@ -72,4 +106,4 @@ export async function fetchActiveOffers(supabase: any): Promise<ActiveOffer[]> {
       offer_name: row.offers.name,
       end_date: row.offers.end_date,
     }))
-}
+}*/ 
