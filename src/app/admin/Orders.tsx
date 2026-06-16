@@ -38,6 +38,7 @@ export default function AdminOrders() {
   const [cancelModalOpen, setCancelModalOpen] = useState(false)
   const [cancelReason, setCancelReason] = useState('')
   const [cancelling, setCancelling] = useState(false)
+  const [approving, setApproving] = useState(false)
 
   // [REALTIME] Subscribe to purchase_orders changes so new orders appear without refresh.
   // Make sure Realtime is enabled on the purchase_orders table in Supabase dashboard:
@@ -115,7 +116,8 @@ export default function AdminOrders() {
   }
 
   async function handleApprove() {
-  if (!selectedOrder) return
+  if (!selectedOrder || approving) return
+  setApproving(true)
 
   const insufficientItems: string[] = []
 
@@ -136,6 +138,7 @@ export default function AdminOrders() {
 
   if (insufficientItems.length > 0) {
     alert(`Cannot approve — insufficient stock:\n${insufficientItems.join('\n')}`)
+    setApproving(false)
     return
   }
 
@@ -144,7 +147,7 @@ export default function AdminOrders() {
     .update({ status: 'approved' })
     .eq('po_id', selectedOrder.id)
 
-  if (error) { console.error(error); return }
+  if (error) { console.error(error); setApproving(false); return }
 
   const { error: dispatchError } = await supabase
     .from('dispatches')
@@ -156,7 +159,7 @@ export default function AdminOrders() {
       status: 'pending',
     })
 
-  if (dispatchError) { console.error(dispatchError); return }
+  if (dispatchError) { console.error(dispatchError); setApproving(false); return }
 
   // [NOTIFY] Notify the distributor their order was approved
   const { data: dist, error: distError } = await supabase
@@ -203,6 +206,7 @@ export default function AdminOrders() {
     if (adminNotifError) console.error('Failed to insert admin notifications', adminNotifError)
   }
 
+  setApproving(false)
   handleClose()
   fetchOrders()
 }
@@ -373,9 +377,10 @@ export default function AdminOrders() {
                 </button>
                 <button
                   onClick={handleApprove}
-                  className="flex-1 py-2 text-sm bg-[#eb2030] text-white rounded-lg hover:bg-[#c4001a] transition-colors"
+                  disabled={approving}
+                  className="flex-1 py-2 text-sm bg-[#eb2030] text-white rounded-lg hover:bg-[#c4001a] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  Approve Order
+                  {approving ? 'Approving...' : 'Approve Order'}
                 </button>
               </div>
             )}
