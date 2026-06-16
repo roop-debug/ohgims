@@ -42,9 +42,12 @@ export default function AdminOffers() {
   const [formDesc, setFormDesc] = useState('')
   const [formDiscountType, setFormDiscountType] = useState<'percent' | 'value'>('percent')
   const [formDiscountValue, setFormDiscountValue] = useState('')
-  const [formStartDate, setFormStartDate] = useState('')
-  const [formEndDate, setFormEndDate] = useState('')
   const [formSelectedSKUs, setFormSelectedSKUs] = useState<string[]>([])
+  // [UX] Separate date and time state for start and end
+  const [formStartDate, setFormStartDate] = useState('')
+  const [formStartTime, setFormStartTime] = useState('00:00')
+  const [formEndDate, setFormEndDate] = useState('')
+  const [formEndTime, setFormEndTime] = useState('23:59')
 
   useEffect(() => {
     fetchOffers()
@@ -68,8 +71,8 @@ export default function AdminOffers() {
         description: row.description,
         discount_type: row.discount_type,
         discount_value: row.discount_value,
-        start_date: new Date(row.start_date).toLocaleDateString('en-IN'),
-        end_date: new Date(row.end_date).toLocaleDateString('en-IN'),
+        start_date: new Date(row.start_date).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }),
+        end_date: new Date(row.end_date).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }),
         status: row.status,
         created_at: new Date(row.created_at).toLocaleDateString('en-IN'),
         sku_names: row.offer_skus?.map((os: any) => os.skus?.name).filter(Boolean) ?? [],
@@ -93,7 +96,9 @@ export default function AdminOffers() {
     setFormDiscountType('percent')
     setFormDiscountValue('')
     setFormStartDate('')
+    setFormStartTime('00:00')
     setFormEndDate('')
+    setFormEndTime('23:59')
     setFormSelectedSKUs([])
     setError(null)
   }
@@ -110,11 +115,16 @@ export default function AdminOffers() {
     if (formSelectedSKUs.length === 0) return setError('Select at least one SKU.')
     if (!formDiscountValue || Number(formDiscountValue) <= 0) return setError('Enter a valid discount value.')
     if (!formStartDate || !formEndDate) return setError('Start and end dates are required.')
-    if (new Date(formEndDate) <= new Date(formStartDate)) return setError('End date must be after start date.')
+
+    // [UX] Combine separate date + time fields into ISO strings
+    const startISO = new Date(`${formStartDate}T${formStartTime || '00:00'}`).toISOString()
+    const endISO = new Date(`${formEndDate}T${formEndTime || '23:59'}`).toISOString()
+
+    if (new Date(endISO) <= new Date(startISO)) return setError('End date must be after start date.')
 
     setSubmitting(true)
 
-    // [OFFERS] Check none of the selected SKUs already have an active offer
+    // Check none of the selected SKUs already have an active offer
     const now = new Date().toISOString()
     const { data: conflicting } = await supabase
       .from('offer_skus')
@@ -133,7 +143,6 @@ export default function AdminOffers() {
       return
     }
 
-    // [OFFERS] Insert the offer
     const { data: offer, error: offerError } = await supabase
       .from('offers')
       .insert({
@@ -141,8 +150,8 @@ export default function AdminOffers() {
         description: formDesc.trim() || null,
         discount_type: formDiscountType,
         discount_value: Number(formDiscountValue),
-        start_date: new Date(formStartDate).toISOString(),
-        end_date: new Date(formEndDate).toISOString(),
+        start_date: startISO,
+        end_date: endISO,
         status: 'active',
       })
       .select('offer_id')
@@ -154,7 +163,6 @@ export default function AdminOffers() {
       return
     }
 
-    // [OFFERS] Insert offer_skus rows with original_price snapshot
     const offerSkuRows = formSelectedSKUs.map((sku_id) => {
       const sku = skuOptions.find((s) => s.sku_id === sku_id)
       return {
@@ -171,7 +179,6 @@ export default function AdminOffers() {
       return
     }
 
-    // [OFFERS] Notify all distributors via edge function
     const selectedSkuNames = skuOptions
       .filter((s) => formSelectedSKUs.includes(s.sku_id))
       .map((s) => s.name)
@@ -298,7 +305,6 @@ export default function AdminOffers() {
             />
           </div>
 
-          {/* [OFFERS] SKU multi-select — checkboxes */}
           <div>
             <label className={labelClass}>Select SKUs</label>
             <div className="border border-gray-200 rounded-lg max-h-40 overflow-y-auto divide-y divide-gray-50">
@@ -323,7 +329,6 @@ export default function AdminOffers() {
             )}
           </div>
 
-          {/* [OFFERS] Discount type toggle */}
           <div>
             <label className={labelClass}>Discount Type</label>
             <div className="flex rounded-lg border border-gray-200 overflow-hidden">
@@ -355,14 +360,40 @@ export default function AdminOffers() {
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className={labelClass}>Start Date</label>
-              <input type="datetime-local" value={formStartDate} onChange={(e) => setFormStartDate(e.target.value)} className={inputClass} />
+          {/* [UX] Separate date and time pickers for start and end */}
+          <div>
+            <label className={labelClass}>Start</label>
+            <div className="flex gap-2">
+              <input
+                type="date"
+                value={formStartDate}
+                onChange={(e) => setFormStartDate(e.target.value)}
+                className={inputClass}
+              />
+              <input
+                type="time"
+                value={formStartTime}
+                onChange={(e) => setFormStartTime(e.target.value)}
+                className="w-32 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#eb2030]"
+              />
             </div>
-            <div>
-              <label className={labelClass}>End Date</label>
-              <input type="datetime-local" value={formEndDate} onChange={(e) => setFormEndDate(e.target.value)} className={inputClass} />
+          </div>
+
+          <div>
+            <label className={labelClass}>End</label>
+            <div className="flex gap-2">
+              <input
+                type="date"
+                value={formEndDate}
+                onChange={(e) => setFormEndDate(e.target.value)}
+                className={inputClass}
+              />
+              <input
+                type="time"
+                value={formEndTime}
+                onChange={(e) => setFormEndTime(e.target.value)}
+                className="w-32 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#eb2030]"
+              />
             </div>
           </div>
 
