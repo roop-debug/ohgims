@@ -23,6 +23,7 @@ export default function AdminDispatch() {
   const [newETA, setNewETA] = useState('')
   const [data, setData] = useState<DispatchRow[]>([])
   const [loading, setLoading] = useState(true)
+  const [submitting, setSubmitting] = useState(false)
 
   useEffect(() => { fetchDispatches() }, [])
 
@@ -122,7 +123,8 @@ export default function AdminDispatch() {
   }
 
   async function handleSaveStatus() {
-    if (!selectedDispatch) return
+    if (!selectedDispatch || submitting) return
+    setSubmitting(true)
 
     const previousStatus = selectedDispatch.status
     const updateData: any = { status: newStatus }
@@ -140,7 +142,7 @@ export default function AdminDispatch() {
       .update(updateData)
       .eq('dispatch_id', selectedDispatch.id)
 
-    if (error) { console.error(error); return }
+    if (error) { console.error(error); setSubmitting(false); return }
 
     // --- in_transit: deduct master inventory ---
     if (newStatus === 'in_transit') {
@@ -181,6 +183,7 @@ export default function AdminDispatch() {
     setStatusModalOpen(false)
     setSelectedDispatch(null)
     setNewETA('')
+    setSubmitting(false)
     fetchDispatches()
   }
 
@@ -278,9 +281,10 @@ export default function AdminDispatch() {
 
           <button
             onClick={handleSaveStatus}
-            className="w-full bg-[#eb2030] text-white py-2 rounded-lg text-sm font-medium hover:bg-[#c4001a] transition-colors mt-2"
+            disabled={submitting}
+            className="w-full bg-[#eb2030] text-white py-2 rounded-lg text-sm font-medium hover:bg-[#c4001a] transition-colors disabled:opacity-50 disabled:cursor-not-allowed mt-2"
           >
-            Save Status
+            {submitting ? 'Saving...' : 'Save Status'}
           </button>
         </div>
       </Modal>

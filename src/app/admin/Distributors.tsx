@@ -150,7 +150,9 @@ export default function AdminDistributors() {
       }
     }
     setError(null)
+    setSubmitting(true)
     await fetchSKUs()
+    setSubmitting(false)
     setStep(2)
   }
 
@@ -370,8 +372,8 @@ if (allSkus) {
               </div>
             </div>
             {error && <p className="text-sm text-red-500">{error}</p>}
-            <button onClick={handleNextStep} className="w-full bg-[#eb2030] text-white py-2 rounded-lg text-sm font-medium hover:bg-[#c4001a] transition-colors mt-2">
-              Next — Add Initial Order →
+            <button onClick={handleNextStep} disabled={submitting} className="w-full bg-[#eb2030] text-white py-2 rounded-lg text-sm font-medium hover:bg-[#c4001a] transition-colors disabled:opacity-50 disabled:cursor-not-allowed mt-2">
+              {submitting ? 'Loading...' : 'Next — Add Initial Order →'}
             </button>
           </div>
         ) : (

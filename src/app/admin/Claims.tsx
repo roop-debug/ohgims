@@ -27,6 +27,7 @@ export default function AdminClaims() {
   const [modalOpen, setModalOpen] = useState(false)
   const [data, setData] = useState<ClaimRow[]>([])
   const [loading, setLoading] = useState(true)
+  const [submitting, setSubmitting] = useState(false)
 
   useEffect(() => { fetchClaims() }, [])
 
@@ -80,35 +81,37 @@ export default function AdminClaims() {
   }
 
   async function handleApprove() {
-    if (!selectedClaim) return
+    if (!selectedClaim || submitting) return
+    setSubmitting(true)
     const { error } = await supabase
       .from('claims')
       .update({ status: 'approved', resolved_at: new Date().toISOString() })
       .eq('claim_id', selectedClaim.id)
-    if (error) { console.error(error); return }
+    if (error) { console.error(error); setSubmitting(false); return }
 
-    // Notify distributor
     await supabase.functions.invoke('notify-claim-status', {
       body: { claim_id: selectedClaim.id, new_status: 'approved' }
     })
 
+    setSubmitting(false)
     handleClose()
     fetchClaims()
   }
 
   async function handleDecline() {
-    if (!selectedClaim) return
+    if (!selectedClaim || submitting) return
+    setSubmitting(true)
     const { error } = await supabase
       .from('claims')
       .update({ status: 'declined', resolved_at: new Date().toISOString() })
       .eq('claim_id', selectedClaim.id)
-    if (error) { console.error(error); return }
+    if (error) { console.error(error); setSubmitting(false); return }
 
-    // Notify distributor
     await supabase.functions.invoke('notify-claim-status', {
       body: { claim_id: selectedClaim.id, new_status: 'declined' }
     })
 
+    setSubmitting(false)
     handleClose()
     fetchClaims()
   }
@@ -242,15 +245,17 @@ export default function AdminClaims() {
               <div className="flex gap-3 mt-2">
                 <button
                   onClick={handleDecline}
-                  className="flex-1 py-2 text-sm border border-[#eb2030] text-[#eb2030] rounded-lg hover:bg-orange-50 transition-colors"
+                  disabled={submitting}
+                  className="flex-1 py-2 text-sm border border-[#eb2030] text-[#eb2030] rounded-lg hover:bg-orange-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  Decline
+                  {submitting ? 'Processing...' : 'Decline'}
                 </button>
                 <button
                   onClick={handleApprove}
-                  className="flex-1 py-2 text-sm bg-[#eb2030] text-white rounded-lg hover:bg-[#c4001a] transition-colors"
+                  disabled={submitting}
+                  className="flex-1 py-2 text-sm bg-[#eb2030] text-white rounded-lg hover:bg-[#c4001a] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  Approve
+                  {submitting ? 'Processing...' : 'Approve'}
                 </button>
               </div>
             )}
