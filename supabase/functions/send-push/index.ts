@@ -5,6 +5,9 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+// =============================================
+// VAPID JWT generation (unchanged from original)
+// =============================================
 async function generateVapidHeaders(
   endpoint: string,
   vapidPublicKey: string,
@@ -47,10 +50,138 @@ async function generateVapidHeaders(
 
   return {
     Authorization: `vapid t=${jwt}, k=${vapidPublicKey}`,
-    'Content-Type': 'application/json',
   }
 }
 
+// =============================================
+// [FIX] AES-128-GCM Web Push payload encryption
+// Encrypts the push body using the subscriber's p256dh and auth keys
+// as required by the Web Push protocol (RFC 8291 / RFC 8188)
+// =============================================
+async function encryptPayload(
+  payload: string,
+  p256dh: string,
+  auth: string
+): Promise<{ ciphertext: Uint8Array; salt: Uint8Array; serverPublicKey: Uint8Array }> {
+  const encoder = new TextEncoder()
+
+  // Decode subscriber keys
+  const subscriberPublicKeyRaw = Uint8Array.from(
+    atob(p256dh.replace(/-/g, '+').replace(/_/g, '/')),
+    (c) => c.charCodeAt(0)
+  )
+  const authSecret = Uint8Array.from(
+    atob(auth.replace(/-/g, '+').replace(/_/g, '/')),
+    (c) => c.charCodeAt(0)
+  )
+
+  // Import subscriber public key
+  const subscriberPublicKey = await crypto.subtle.importKey(
+    'raw',
+    subscriberPublicKeyRaw,
+    { name: 'ECDH', namedCurve: 'P-256' },
+    true,
+    []
+  )
+
+  // Generate ephemeral server key pair
+  const serverKeyPair = await crypto.subtle.generateKey(
+    { name: 'ECDH', namedCurve: 'P-256' },
+    true,
+    ['deriveKey', 'deriveBits']
+  )
+
+  // Export server public key (65 bytes uncompressed)
+  const serverPublicKeyRaw = new Uint8Array(
+    await crypto.subtle.exportKey('raw', serverKeyPair.publicKey)
+  )
+
+  // Derive shared secret via ECDH
+  const sharedSecret = new Uint8Array(
+    await crypto.subtle.deriveBits(
+      { name: 'ECDH', public: subscriberPublicKey },
+      serverKeyPair.privateKey,
+      256
+    )
+  )
+
+  // Generate random 16-byte salt
+  const salt = crypto.getRandomValues(new Uint8Array(16))
+
+  // HKDF extract + expand for pseudo-random key (PRK)
+  const hkdfKey = await crypto.subtle.importKey('raw', sharedSecret, 'HKDF', false, ['deriveKey', 'deriveBits'])
+
+  // PRK from auth secret
+  const prkInfoBuf = concat(encoder.encode('WebPush: info\x00'), subscriberPublicKeyRaw, serverPublicKeyRaw)
+  const prk = new Uint8Array(await crypto.subtle.deriveBits(
+    { name: 'HKDF', hash: 'SHA-256', salt: authSecret, info: prkInfoBuf },
+    hkdfKey,
+    256
+  ))
+
+  // Import PRK for further derivation
+  const prkKey = await crypto.subtle.importKey('raw', prk, 'HKDF', false, ['deriveKey', 'deriveBits'])
+
+  // Content encryption key (CEK)
+  const cekInfo = concat(encoder.encode('Content-Encoding: aes128gcm\x00'))
+  const cek = new Uint8Array(await crypto.subtle.deriveBits(
+    { name: 'HKDF', hash: 'SHA-256', salt, info: cekInfo },
+    prkKey,
+    128
+  ))
+
+  // Nonce
+  const nonceInfo = concat(encoder.encode('Content-Encoding: nonce\x00'))
+  const nonce = new Uint8Array(await crypto.subtle.deriveBits(
+    { name: 'HKDF', hash: 'SHA-256', salt, info: nonceInfo },
+    prkKey,
+    96
+  ))
+
+  // Import CEK for AES-GCM encryption
+  const aesKey = await crypto.subtle.importKey('raw', cek, { name: 'AES-GCM' }, false, ['encrypt'])
+
+  // Encode payload with padding delimiter (0x02) per RFC 8188
+  const payloadBytes = encoder.encode(payload)
+  const plaintext = concat(payloadBytes, new Uint8Array([0x02]))
+
+  // Encrypt
+  const encrypted = new Uint8Array(
+    await crypto.subtle.encrypt({ name: 'AES-GCM', iv: nonce }, aesKey, plaintext)
+  )
+
+  // Build aes128gcm content (RFC 8188):
+  // salt (16) + record_size (4, BE uint32) + key_len (1) + server_public_key (65) + ciphertext
+  const recordSize = plaintext.length + 16 + 1 // tag size + delimiter
+  const recordSizeBuf = new Uint8Array(4)
+  new DataView(recordSizeBuf.buffer).setUint32(0, recordSize + 16, false)
+
+  const ciphertext = concat(
+    salt,
+    recordSizeBuf,
+    new Uint8Array([serverPublicKeyRaw.length]),
+    serverPublicKeyRaw,
+    encrypted
+  )
+
+  return { ciphertext, salt, serverPublicKey: serverPublicKeyRaw }
+}
+
+// Helper to concatenate Uint8Arrays
+function concat(...arrays: Uint8Array[]): Uint8Array {
+  const total = arrays.reduce((n, a) => n + a.length, 0)
+  const result = new Uint8Array(total)
+  let offset = 0
+  for (const arr of arrays) {
+    result.set(arr, offset)
+    offset += arr.length
+  }
+  return result
+}
+
+// =============================================
+// Main handler
+// =============================================
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
@@ -99,15 +230,15 @@ Deno.serve(async (req) => {
       })
     }
 
-    // Always insert in-app notification first
+    // Insert in-app notification
     const { error: notifError } = await supabaseAdmin.from('notifications').insert({
-  user_id,
-  title,
-  message: body,
-  url: url ?? null,
-  read: false,
-})
-if (notifError) console.error('notification insert error:', notifError)
+      user_id,
+      title,
+      message: body,
+      url: url ?? null,
+      read: false,
+    })
+    if (notifError) console.error('notification insert error:', notifError)
 
     // Get push subscriptions
     const { data: subscriptions } = await supabaseAdmin
@@ -126,30 +257,47 @@ if (notifError) console.error('notification insert error:', notifError)
     const vapidPrivateKey = Deno.env.get('VAPID_PRIVATE_KEY')!
     const vapidEmail = Deno.env.get('VAPID_EMAIL')!
 
+    const pushPayload = JSON.stringify({ title, body, url: url ?? '/' })
+
     const results = await Promise.allSettled(
       subscriptions.map(async (sub: any) => {
-        const headers = await generateVapidHeaders(
-          sub.endpoint,
-          vapidPublicKey,
-          vapidPrivateKey,
-          vapidEmail
-        )
+        try {
+          // [FIX] Encrypt payload using subscriber's p256dh and auth keys
+          const { ciphertext } = await encryptPayload(pushPayload, sub.p256dh, sub.auth)
 
-        const res = await fetch(sub.endpoint, {
-          method: 'POST',
-          headers: {
-            ...headers,
-            'Content-Encoding': 'aes128gcm',
-            TTL: '86400',
-          },
-          body: JSON.stringify({ title, body, url: url ?? '/' }),
-        })
+          const vapidHeaders = await generateVapidHeaders(
+            sub.endpoint,
+            vapidPublicKey,
+            vapidPrivateKey,
+            vapidEmail
+          )
 
-        if (res.status === 410) {
-          await supabaseAdmin.from('push_subscriptions').delete().eq('id', sub.id)
+          const res = await fetch(sub.endpoint, {
+            method: 'POST',
+            headers: {
+              ...vapidHeaders,
+              'Content-Type': 'application/octet-stream',
+              'Content-Encoding': 'aes128gcm',
+              'TTL': '86400',
+            },
+            body: ciphertext,
+          })
+
+          // 410 Gone = subscription expired, clean it up
+          if (res.status === 410 || res.status === 404) {
+            await supabaseAdmin.from('push_subscriptions').delete().eq('id', sub.id)
+          }
+
+          if (!res.ok) {
+            const errText = await res.text()
+            console.error(`Push failed for ${sub.endpoint}: ${res.status} ${errText}`)
+          }
+
+          return res.status
+        } catch (err) {
+          console.error(`Encryption/push error for ${sub.endpoint}:`, err)
+          throw err
         }
-
-        return res.status
       })
     )
 
