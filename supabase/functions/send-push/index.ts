@@ -32,7 +32,7 @@ async function generateVapidHeaders(
   )
 
   const privateKey = await crypto.subtle.importKey(
-    'pkcs8',
+    'raw',
     keyData,
     { name: 'ECDSA', namedCurve: 'P-256' },
     false,
